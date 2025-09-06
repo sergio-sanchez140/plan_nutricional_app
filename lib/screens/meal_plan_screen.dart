@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:plan_nutricional_app/services/api_service.dart';
 
 class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({Key? key}) : super(key: key);
@@ -67,7 +68,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       ),
     );
   }
-
+  
   Widget _mealCard(Map<String, dynamic> meal) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

@@ -1,7 +1,73 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  _LoginScreenState createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _loading = false;
+
+  Future<void> _login() async {
+    setState(() {
+      _loading = true;
+    });
+
+    final url = Uri.parse('http://127.0.0.1:8000/db/login');
+    final body = jsonEncode({
+      "email": _emailController.text.trim(),
+      "password": _passwordController.text
+    });
+
+    try {
+      final response = await http.post(url,
+          headers: {"Content-Type": "application/json"}, body: body);
+
+      print('Status code: ${response.statusCode}');
+      print('Headers: ${response.headers}');
+      print('Body: ${response.body}');
+
+      if (response.statusCode == 200 && response.body.isNotEmpty) {
+        final data = jsonDecode(response.body);
+        final token = data['access_token'];
+
+        // Guardar token en SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('access_token', token);
+
+        Navigator.pushReplacementNamed(context, '/main');
+      } else {
+        String msg = 'Error en login';
+        if (response.body.isNotEmpty) {
+          try {
+            final error = jsonDecode(response.body);
+            msg = error['message'] ?? msg;
+          } catch (_) {}
+        }
+        _showError(msg);
+      }
+    } catch (e, stacktrace) {
+      print("EXCEPCIÓN: $e");
+      print("STACKTRACE: $stacktrace");
+      _showError("Ocurrió un error inesperado");
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,15 +80,12 @@ class LoginScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 60),
-
-              // Título
               const Text(
                 "Bienvenido de nuevo 👋",
                 style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
@@ -31,11 +94,9 @@ class LoginScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 16, color: Colors.black54),
                 textAlign: TextAlign.center,
               ),
-
               const SizedBox(height: 40),
-
-              // Campo email
               TextField(
+                controller: _emailController,
                 decoration: InputDecoration(
                   hintText: "Correo electrónico",
                   prefixIcon: const Icon(Icons.email_outlined),
@@ -47,9 +108,8 @@ class LoginScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Campo contraseña
               TextField(
+                controller: _passwordController,
                 obscureText: true,
                 decoration: InputDecoration(
                   hintText: "Contraseña",
@@ -61,27 +121,17 @@ class LoginScreen extends StatelessWidget {
                   fillColor: Colors.grey[100],
                 ),
               ),
-
               const SizedBox(height: 10),
-
-              // ¿Olvidaste tu contraseña?
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () {
-                    // Navegar a pantalla de recuperación
-                  },
+                  onPressed: () {},
                   child: const Text("¿Olvidaste tu contraseña?"),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              // Botón principal
               ElevatedButton(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/main');
-                },
+                onPressed: _loading ? null : _login,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.greenAccent.shade700,
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -89,15 +139,17 @@ class LoginScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text(
-                  "Iniciar Sesión",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                child: _loading
+                    ? const CircularProgressIndicator(
+                        color: Colors.white,
+                      )
+                    : const Text(
+                        "Iniciar Sesión",
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
               ),
-
               const SizedBox(height: 20),
-
-              // Separador
               Row(
                 children: const [
                   Expanded(child: Divider(thickness: 1)),
@@ -108,13 +160,10 @@ class LoginScreen extends StatelessWidget {
                   Expanded(child: Divider(thickness: 1)),
                 ],
               ),
-
               const SizedBox(height: 20),
-
-              // Botón Google
               ElevatedButton.icon(
                 onPressed: () {
-                  // Aquí luego meteremos Google Auth
+                  // Google Auth aquí
                 },
                 icon: const Icon(Icons.g_mobiledata, size: 32),
                 label: const Text("Continuar con Google"),
@@ -127,10 +176,7 @@ class LoginScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
               const SizedBox(height: 30),
-
-              // Crear cuenta
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -149,7 +195,6 @@ class LoginScreen extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 40),
             ],
           ),
