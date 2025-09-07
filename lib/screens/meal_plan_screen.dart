@@ -79,19 +79,16 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         menu.forEach((mealType, items) {
           parsedMeals[mealType.toString()] = (items as List).map((item) {
             final img = foodImages[Random().nextInt(foodImages.length)];
+            final macros = item["macros"] ?? {};
             return {
-              "id":
-                  item["id"] ??
-                  Random().nextInt(10000), // id necesario para PATCH
-              "name": item["nombre"] ?? item["alimento"] ?? "Comida",
+              "id": item["id"] ?? Random().nextInt(10000),
+              "name": item["nombre"] ?? "Comida",
               "cantidad": item["cantidad"] ?? "",
-              "carbs": item["carbohidratos"] ?? item["carbohidratos_g"] ?? 0,
-              "protein":
-                  item["proteínas"] ??
-                  item["proteinas_g"] ??
-                  item["proteina"] ??
-                  0,
-              "fat": item["grasas"] ?? 0,
+              "carbs": macros["carbohidratos_g"] ?? 0,
+              "protein": macros["proteinas_g"] ?? 0,
+              "fat": macros["grasas_g"] ?? 0,
+              "calorias": item["calorias"] ?? 0,
+              "completed": item["completed"] ?? false,
               "image": img,
             };
           }).toList();
@@ -257,9 +254,13 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                     Text("Cantidad: ${meal["cantidad"]}"),
                   const SizedBox(height: 6),
                   Text(
-                    "P: ${meal["protein"]}g  C: ${meal["carbs"]}g  F: ${meal["fat"]}g",
+                    "P: ${meal["protein"].toString()}g  C: ${meal["carbs"].toString()}g  F: ${meal["fat"].toString()}g",
                   ),
                   const SizedBox(height: 6),
+                  Text(
+                    "Calorías: ${meal["calorias"].toString()}",
+                    style: const TextStyle(fontStyle: FontStyle.italic),
+                  ),
                   Row(
                     children: [
                       ElevatedButton(
