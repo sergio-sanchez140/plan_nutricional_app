@@ -16,7 +16,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   Map<String, List<Map<String, dynamic>>> meals = {};
   bool _loading = true;
 
-  // Imágenes disponibles en assets
   final List<String> foodImages = const [
     "assets/images/foods/avena-frutos-rojos.png",
     "assets/images/foods/pollo-quinoa.png",
@@ -33,15 +32,12 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   Future<void> _fetchMealPlan() async {
     try {
       setState(() => _loading = true);
-
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
 
       if (token == null || token.isEmpty) {
         _showError('Sesión expirada. Inicia sesión de nuevo.');
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/login');
-        }
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
         return;
       }
 
@@ -56,7 +52,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
       if (response.statusCode == 200) {
         final List<dynamic> list = jsonDecode(response.body);
-
         if (list.isEmpty) {
           setState(() {
             meals = {};
@@ -73,15 +68,15 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
         final latest = list.first;
         final menu = (latest['menu'] ?? {}) as Map<String, dynamic>;
-
         final Map<String, List<Map<String, dynamic>>> parsedMeals = {};
 
         menu.forEach((mealType, items) {
           parsedMeals[mealType.toString()] = (items as List).map((item) {
             final img = foodImages[Random().nextInt(foodImages.length)];
             final macros = item["macros"] ?? {};
-            return {
-              "id": item["id"] ?? Random().nextInt(10000),
+            final mealMap = {
+              "id": item["id"],
+              "planId": item["plan_id"], // aquí debería venir 1 según tu JSON
               "name": item["nombre"] ?? "Comida",
               "cantidad": item["cantidad"] ?? "",
               "carbs": macros["carbohidratos_g"] ?? 0,
@@ -91,6 +86,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
               "completed": item["completed"] ?? false,
               "image": img,
             };
+            print("Meal mapped: $mealMap"); // 🔥 debug
+            return mealMap;
           }).toList();
         });
 
@@ -102,9 +99,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         }
       } else if (response.statusCode == 401) {
         _showError('Sesión no válida. Vuelve a iniciar sesión.');
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/login');
-        }
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
       } else {
         _showError('Error ${response.statusCode} al cargar el menú');
         setState(() => _loading = false);
@@ -141,17 +136,75 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          // Actualizamos con el valor real que devuelve el backend
-          meal['completed'] = data['completed'];
-        });
+        setState(() => meal['completed'] = data['completed']);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Comida actualizada')));
+        ).showSnackBar(const SnackBar(content: Text('Comida actualizada')));
       } else {
         _showError('Error ${response.statusCode} al actualizar comida');
       }
     } catch (e) {
+      _showError('No se pudo conectar al servidor');
+    }
+  }
+
+  Future<void> _replaceMeal(Map<String, dynamic> meal) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      if (token == null || token.isEmpty) {
+        _showError('Sesión expirada. Inicia sesión de nuevo.');
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
+        return;
+      }
+
+      final planId = meal['planId'];
+      final mealId = meal['id'];
+
+      print("👉 Botón cambiar presionado");
+      print("PlanId: $planId, MealId: $mealId");
+
+      if (planId == null) {
+        _showError("No se encontró el plan activo.");
+        return;
+      }
+
+      final url = Uri.parse(
+        'http://127.0.0.1:8000/ai/menus/$planId/replace-meal/$mealId',
+      );
+      print("URL llamada: $url");
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print("Status code: ${response.statusCode}");
+      print("Response body: ${response.body}");
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          meal["id"] = data["id"];
+          meal["planId"] = data["plan_id"];
+          meal["name"] = data["nombre"];
+          meal["carbs"] = data["macros"]?["carbohidratos_g"] ?? 0;
+          meal["protein"] = data["macros"]?["proteinas_g"] ?? 0;
+          meal["fat"] = data["macros"]?["grasas_g"] ?? 0;
+          meal["calorias"] = data["calorias"] ?? 0;
+          meal["completed"] = data["completed"] ?? false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Comida reemplazada con éxito")),
+        );
+      } else {
+        _showError('Error ${response.statusCode} al reemplazar comida');
+      }
+    } catch (e) {
+      print("🚨 Error en _replaceMeal: $e");
       _showError('No se pudo conectar al servidor');
     }
   }
@@ -264,9 +317,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
                   Row(
                     children: [
                       ElevatedButton(
-                        onPressed: () {
-                          // TODO: Cambiar comida
-                        },
+                        onPressed: () => _replaceMeal(meal),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green[400],
                           shape: RoundedRectangleBorder(
