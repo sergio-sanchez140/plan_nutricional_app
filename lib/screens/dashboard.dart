@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:percent_indicator/percent_indicator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Dashboard extends StatefulWidget {
-  final Function(int)? onTabSelected; // Callback para cambiar pestañas
+  final Function(int)? onTabSelected;
 
   const Dashboard({Key? key, this.onTabSelected}) : super(key: key);
 
@@ -11,9 +14,11 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMixin {
-  // Controlador para animaciones de entrada de recomendaciones
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
+
+  Map<String, dynamic>? userData;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -25,6 +30,55 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
     _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
         .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
+
+    _fetchUserData();
+  }
+
+  Future<void> _fetchUserData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null || token.isEmpty) {
+        _showError("Sesión expirada. Inicia sesión de nuevo.");
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/login');
+        }
+        return;
+      }
+
+      final url = Uri.parse('http://127.0.0.1:8000/db/me');
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          userData = jsonDecode(response.body);
+          _loading = false;
+        });
+      } else if (response.statusCode == 401) {
+        _showError("Sesión no válida. Vuelve a iniciar sesión.");
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/login');
+        }
+      } else {
+        _showError("Error ${response.statusCode} al cargar datos");
+        setState(() => _loading = false);
+      }
+    } catch (e) {
+      _showError("No se pudo conectar al servidor");
+      setState(() => _loading = false);
+    }
+  }
+
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -35,14 +89,22 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final nombre = userData?['nombre'] ?? "Usuario";
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text(
-          "¡Hola, Juan! 🌟",
-          style: TextStyle(
+        title: Text(
+          "¡Hola, $nombre! 🌟",
+          style: const TextStyle(
               color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22),
         ),
         actions: [
@@ -88,14 +150,15 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text("Resumen Diario",
+                        children: [
+                          const Text("Resumen Diario",
                               style: TextStyle(
                                   fontWeight: FontWeight.bold, fontSize: 18)),
-                          SizedBox(height: 10),
-                          Text("Carbohidratos: 150g"),
-                          Text("Proteínas: 80g"),
-                          Text("Grasas: 50g"),
+                          const SizedBox(height: 10),
+                          Text("Edad: ${userData?['edad'] ?? '-'}"),
+                          Text("Peso: ${userData?['peso'] ?? '-'} kg"),
+                          Text("Altura: ${userData?['altura'] ?? '-'} cm"),
+                          Text("Objetivo: ${userData?['objetivo'] ?? '-'}"),
                         ],
                       ),
                     ),
@@ -170,7 +233,9 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
             child: Icon(icon, color: Colors.green[700]),
           ),
           const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 12), textAlign: TextAlign.center),
+          Text(label,
+              style: const TextStyle(fontSize: 12),
+              textAlign: TextAlign.center),
         ],
       ),
     );
