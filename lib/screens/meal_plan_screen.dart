@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({Key? key}) : super(key: key);
@@ -13,6 +14,7 @@ class MealPlanScreen extends StatefulWidget {
 }
 
 class _MealPlanScreenState extends State<MealPlanScreen> {
+  bool _replacingMeal = false;
   Map<String, List<Map<String, dynamic>>> meals = {};
   bool _loading = true;
 
@@ -149,6 +151,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   }
 
   Future<void> _replaceMeal(Map<String, dynamic> meal) async {
+    setState(() => _replacingMeal = true); // mostrar overlay
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
@@ -161,18 +164,15 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       final planId = meal['planId'];
       final mealId = meal['id'];
 
-      print("👉 Botón cambiar presionado");
-      print("PlanId: $planId, MealId: $mealId");
-
       if (planId == null) {
         _showError("No se encontró el plan activo.");
+        setState(() => _replacingMeal = false);
         return;
       }
 
       final url = Uri.parse(
         'http://127.0.0.1:8000/ai/menus/$planId/replace-meal/$mealId',
       );
-      print("URL llamada: $url");
 
       final response = await http.post(
         url,
@@ -181,9 +181,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           'Content-Type': 'application/json',
         },
       );
-
-      print("Status code: ${response.statusCode}");
-      print("Response body: ${response.body}");
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -197,8 +194,12 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           meal["calorias"] = data["calorias"] ?? 0;
           meal["completed"] = data["completed"] ?? false;
         });
+        // Animación de éxito
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Comida reemplazada con éxito")),
+          const SnackBar(
+            content: Text("✨ Tu plato ha sido transformado con magia! ✨"),
+            duration: Duration(seconds: 2),
+          ),
         );
       } else {
         _showError('Error ${response.statusCode} al reemplazar comida');
@@ -206,6 +207,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     } catch (e) {
       print("🚨 Error en _replaceMeal: $e");
       _showError('No se pudo conectar al servidor');
+    } finally {
+      setState(() => _replacingMeal = false); // quitar overlay
     }
   }
 
@@ -216,59 +219,101 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text(
-          "Mi Plan – Diario",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.black),
-            onPressed: _fetchMealPlan,
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : meals.isEmpty
-          ? const Center(child: Text("No hay menú disponible"))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: meals.entries.map((entry) {
-                  final mealType = entry.key;
-                  final mealList = entry.value;
-                  final title = mealType.isNotEmpty
-                      ? mealType[0].toUpperCase() + mealType.substring(1)
-                      : mealType;
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Column(
-                        children: mealList
-                            .map((meal) => _mealCard(meal))
-                            .toList(),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  );
-                }).toList(),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: Colors.grey[100],
+          appBar: AppBar(
+            title: const Text(
+              "Mi Plan – Diario",
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
               ),
             ),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.black),
+                onPressed: _fetchMealPlan,
+              ),
+            ],
+          ),
+          body: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : meals.isEmpty
+              ? const Center(child: Text("No hay menú disponible"))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: meals.entries.map((entry) {
+                      final mealType = entry.key;
+                      final mealList = entry.value;
+                      final title = mealType.isNotEmpty
+                          ? mealType[0].toUpperCase() + mealType.substring(1)
+                          : mealType;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Column(
+                            children: mealList
+                                .map((meal) => _mealCard(meal))
+                                .toList(),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
+        ),
+        // Overlay de magia
+        // Overlay de magia con GIF
+        if (_replacingMeal)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.5),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.network(
+                      'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExcXZnc3Npcmw2dzVuMXduemF4YjFoYm04eHo1M2FoZjVpc21idzVtcyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9dHM/5oaWdgMNnLTrTSra4E/giphy.gif',
+                      height: 150,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      "🪄 Haciendo magia con tu plato...",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(
+                            blurRadius: 4,
+                            color: Colors.yellowAccent,
+                            offset: Offset(0, 0),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
