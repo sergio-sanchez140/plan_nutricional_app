@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -9,13 +12,83 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String name = "Juan Pérez";
-  String goal = "Ganar músculo";
-  double weight = 75;
-  double progress = 0.45; // 45% hacia objetivo
+  String name = "";
+  String goal = "";
+  double weight = 0;
+  double progress = 0.0;
+  String avatarUrl = "https://images.ctfassets.net/h6goo9gw1hh6/2sNZtFAWOdP1lmQ33VwRN3/e40b6ea6361a1abe28f32e7910f63b66/1-intro-photo-final.jpg?w=1200&h=992&fl=progressive&q=70&fm=jpg";
+
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString("access_token");
+
+      if (token == null) return;
+
+      final url = Uri.parse("http://127.0.0.1:8000/db/me");
+      final response = await http.get(
+        url,
+        headers: {"Authorization": "Bearer $token"},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        setState(() {
+          name = data["nombre"] ?? "";
+          goal = data["objetivo"] ?? "";
+          weight = (data["peso"] ?? 0).toDouble();
+          // Ejemplo de cálculo de progreso:
+          progress = (weight / 100).clamp(0, 1); // Ajusta según tu lógica real
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<bool> _updateProfile(String newName, String newGoal, double newWeight) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString("access_token");
+
+      if (token == null) return false;
+
+      final url = Uri.parse("http://127.0.0.1:8000/db/me");
+      final response = await http.put(
+        url,
+        headers: {
+          "Authorization": "Bearer $token",
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode({
+          "nombre": newName,
+          "objetivo": newGoal,
+          "peso": newWeight,
+        }),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -29,10 +102,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 40,
-                    backgroundImage:
-                        NetworkImage("https://via.placeholder.com/150"),
+                    backgroundImage: NetworkImage(avatarUrl),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -97,13 +169,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _editProfileDialog();
             },
             icon: const Icon(Icons.edit),
-            label: const Text("Editar datos"),
+            label: const Text("Editar perfil"),
             style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[400],
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12))),
+              backgroundColor: Colors.green[400],
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
           ),
 
           const SizedBox(height: 20),
@@ -169,21 +241,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           actions: [
             TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: const Text("Cancelar")),
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancelar"),
+            ),
             ElevatedButton(
-                onPressed: () {
+              onPressed: () async {
+                final updatedName = nameController.text;
+                final updatedGoal = goalController.text;
+                final updatedWeight =
+                    double.tryParse(weightController.text) ?? weight;
+
+                final success =
+                    await _updateProfile(updatedName, updatedGoal, updatedWeight);
+
+                if (success && mounted) {
                   setState(() {
-                    name = nameController.text;
-                    goal = goalController.text;
-                    weight =
-                        double.tryParse(weightController.text) ?? weight;
+                    name = updatedName;
+                    goal = updatedGoal;
+                    weight = updatedWeight;
                   });
                   Navigator.pop(context);
-                },
-                child: const Text("Guardar"))
+                }
+              },
+              child: const Text("Guardar"),
+            ),
           ],
         );
       },
