@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
+  const ProfileScreen({super.key});
 
   @override
   _ProfileScreenState createState() => _ProfileScreenState();
@@ -16,7 +16,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String goal = "";
   double weight = 0;
   double progress = 0.0;
-  String avatarUrl = "https://images.ctfassets.net/h6goo9gw1hh6/2sNZtFAWOdP1lmQ33VwRN3/e40b6ea6361a1abe28f32e7910f63b66/1-intro-photo-final.jpg?w=1200&h=992&fl=progressive&q=70&fm=jpg";
+  String avatarUrl =
+      "https://images.ctfassets.net/h6goo9gw1hh6/2sNZtFAWOdP1lmQ33VwRN3/e40b6ea6361a1abe28f32e7910f63b66/1-intro-photo-final.jpg?w=1200&h=992&fl=progressive&q=70&fm=jpg";
 
   bool _loading = true;
 
@@ -56,7 +57,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<bool> _updateProfile(String newName, String newGoal, double newWeight) async {
+  Future<bool> _updateProfile(
+    String newName,
+    String newGoal,
+    double newWeight,
+  ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString("access_token");
@@ -96,7 +101,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Avatar y datos principales
           Card(
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
+              borderRadius: BorderRadius.circular(20),
+            ),
             elevation: 4,
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -111,16 +117,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(name,
-                            style: const TextStyle(
-                                fontSize: 20, fontWeight: FontWeight.bold)),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const SizedBox(height: 6),
                         Text("Objetivo: $goal"),
                         const SizedBox(height: 6),
                         Text("Peso actual: ${weight.toStringAsFixed(1)} kg"),
                       ],
                     ),
-                  )
+                  ),
                 ],
               ),
             ),
@@ -131,15 +141,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Progreso hacia objetivo
           Card(
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
+              borderRadius: BorderRadius.circular(20),
+            ),
             elevation: 4,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  const Text("Progreso hacia tu objetivo",
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text(
+                    "Progreso hacia tu objetivo",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
                   const SizedBox(height: 16),
                   CircularPercentIndicator(
                     radius: 80.0,
@@ -148,7 +160,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     center: Text(
                       "${(progress * 100).toInt()}%",
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 18),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
                     progressColor: Colors.green,
                     backgroundColor: Colors.grey[300]!,
@@ -174,7 +188,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               backgroundColor: Colors.green[400],
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
 
@@ -183,7 +198,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Accesos rápidos
           Card(
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
+              borderRadius: BorderRadius.circular(20),
+            ),
             elevation: 2,
             child: Column(
               children: [
@@ -198,21 +214,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   leading: const Icon(Icons.logout),
                   title: const Text("Cerrar sesión"),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {},
+                  onTap: _logout,
                 ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
+  Future<void> _logout() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString("access_token");
+
+      if (token != null) {
+        final url = Uri.parse("http://127.0.0.1:8000/db/logout");
+        final response = await http.post(
+          url,
+          headers: {"Authorization": "Bearer $token"},
+        );
+
+        if (response.statusCode == 200) {
+          // Borrar token local
+          await prefs.remove("access_token");
+
+          if (!mounted) return;
+          Navigator.pushReplacementNamed(context, "/login");
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Error al cerrar sesión (${response.statusCode})"),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("No se pudo cerrar sesión")));
+    }
+  }
+
   void _editProfileDialog() {
     TextEditingController nameController = TextEditingController(text: name);
     TextEditingController goalController = TextEditingController(text: goal);
-    TextEditingController weightController =
-        TextEditingController(text: weight.toString());
+    TextEditingController weightController = TextEditingController(
+      text: weight.toString(),
+    );
 
     showDialog(
       context: context,
@@ -233,8 +283,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 TextField(
                   controller: weightController,
                   keyboardType: TextInputType.number,
-                  decoration:
-                      const InputDecoration(labelText: "Peso actual (kg)"),
+                  decoration: const InputDecoration(
+                    labelText: "Peso actual (kg)",
+                  ),
                 ),
               ],
             ),
@@ -251,8 +302,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 final updatedWeight =
                     double.tryParse(weightController.text) ?? weight;
 
-                final success =
-                    await _updateProfile(updatedName, updatedGoal, updatedWeight);
+                final success = await _updateProfile(
+                  updatedName,
+                  updatedGoal,
+                  updatedWeight,
+                );
 
                 if (success && mounted) {
                   setState(() {
