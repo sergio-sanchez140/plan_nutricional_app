@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:plan_nutricional_app/screens/profile_setup_wizard.dart';
 import 'screens/dashboard.dart';
 import 'screens/meal_plan_screen.dart';
 import 'screens/challenges_screen.dart';
@@ -19,17 +20,16 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Plan Nutricional IA',
-      theme: ThemeData(
-        primarySwatch: Colors.green,
-        fontFamily: 'Arial',
-      ),
+      theme: ThemeData(primarySwatch: Colors.green, fontFamily: 'Arial'),
       // Pantalla inicial
       home: const OnboardingScreen(),
       // Rutas nombradas
       routes: {
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const RegisterDataScreen(),
-        '/main': (context) => const MainScreen(), // <- la pantalla principal con tabs
+        '/main': (context) => const MainScreen(), // tabs
+        '/profileSetup': (context) =>
+            const ProfileSetupWizard(), // <-- nuevo wizard
       },
     );
   }
@@ -49,11 +49,13 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> _tabs = [
-      Dashboard(onTabSelected: (index) {
-        setState(() {
-          _currentTab = index;
-        });
-      }),
+      Dashboard(
+        onTabSelected: (index) {
+          setState(() {
+            _currentTab = index;
+          });
+        },
+      ),
       const MealPlanScreen(),
       const ChallengesScreen(),
       const ProfileScreen(),
@@ -73,8 +75,14 @@ class _MainScreenState extends State<MainScreen> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.restaurant_menu), label: 'Plan de comidas'),
-          BottomNavigationBarItem(icon: Icon(Icons.emoji_events), label: 'Retos'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.restaurant_menu),
+            label: 'Plan de comidas',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.emoji_events),
+            label: 'Retos',
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
         ],
       ),

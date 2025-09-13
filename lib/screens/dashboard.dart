@@ -19,6 +19,7 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
 
   Map<String, dynamic>? userData;
   bool _loading = true;
+  bool perfilIncompleto = false;
 
   @override
   void initState() {
@@ -57,8 +58,10 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
       );
 
       if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
         setState(() {
-          userData = jsonDecode(response.body);
+          userData = data;
+          perfilIncompleto = _checkPerfilIncompleto(data);
           _loading = false;
         });
       } else if (response.statusCode == 401) {
@@ -74,6 +77,15 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
       _showError("No se pudo conectar al servidor");
       setState(() => _loading = false);
     }
+  }
+
+  bool _checkPerfilIncompleto(Map<String, dynamic> data) {
+    return data["edad"] == null ||
+        data["peso"] == null ||
+        data["altura"] == null ||
+        data["genero"] == null ||
+        data["nivel_actividad"] == null ||
+        data["objetivo"] == null;
   }
 
   void _showError(String msg) {
@@ -119,6 +131,23 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (perfilIncompleto)
+              Card(
+                color: Colors.orange[50],
+                margin: const EdgeInsets.only(bottom: 16),
+                child: ListTile(
+                  leading: const Icon(Icons.warning, color: Colors.orange),
+                  title: const Text("Tu perfil está incompleto"),
+                  subtitle: const Text("Completa tus datos para personalizar tu plan"),
+                  trailing: ElevatedButton(
+                    child: const Text("Completar"),
+                    onPressed: () {
+                      final email = userData?["email"];
+                      Navigator.pushNamed(context, '/profileSetup', arguments: email);
+                    },
+                  ),
+                ),
+              ),
             // --- Resumen de calorías y macros ---
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
