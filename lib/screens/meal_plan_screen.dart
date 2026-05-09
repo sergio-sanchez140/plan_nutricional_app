@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/meal.dart';
 import '../services/meal_plan_service.dart';
 import '../widgets/meal_card.dart';
 import '../widgets/replacing_overlay.dart';
+import '../errors/profile_incomplete_exception.dart';
 
 class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({Key? key}) : super(key: key);
 
   @override
-  _MealPlanScreenState createState() => _MealPlanScreenState();
+  State<MealPlanScreen> createState() => _MealPlanScreenState();
 }
 
 class _MealPlanScreenState extends State<MealPlanScreen>
     with TickerProviderStateMixin {
   bool _loading = true;
   bool _replacingMeal = false;
+
   Map<String, List<Meal>> meals = {};
+
   final List<String> foodImages = [
     "assets/images/foods/avena-frutos-rojos.png",
     "assets/images/foods/pollo-quinoa.png",
@@ -25,6 +27,7 @@ class _MealPlanScreenState extends State<MealPlanScreen>
   ];
 
   late MealPlanService _service;
+
   final List<AnimationController> _controllers = [];
   final List<Animation<Offset>> _animations = [];
 
@@ -37,27 +40,39 @@ class _MealPlanScreenState extends State<MealPlanScreen>
 
   @override
   void dispose() {
-    for (var c in _controllers) c.dispose();
+    for (final c in _controllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
   void _setupAnimations() {
+    for (final c in _controllers) {
+      c.dispose();
+    }
+
     _controllers.clear();
     _animations.clear();
-    for (var mealList in meals.values) {
+
+    for (final mealList in meals.values) {
       for (int i = 0; i < mealList.length; i++) {
         final controller = AnimationController(
           duration: const Duration(milliseconds: 800),
           vsync: this,
         );
+
         final animation = Tween<Offset>(
           begin: const Offset(-1.0, 0),
           end: Offset.zero,
-        ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOut));
+        ).animate(
+          CurvedAnimation(parent: controller, curve: Curves.easeOut),
+        );
+
         _controllers.add(controller);
         _animations.add(animation);
       }
     }
+
     for (int i = 0; i < _controllers.length; i++) {
       Future.delayed(Duration(milliseconds: i * 200), () {
         if (mounted) _controllers[i].forward();
@@ -65,32 +80,24 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     }
   }
 
-  Future<String?> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('access_token');
-    if (token == null || token.isEmpty) {
-      if (mounted) Navigator.pushReplacementNamed(context, '/login');
-      return null;
-    }
-    return token;
-  }
-
   Future<void> _fetchMealPlan() async {
     setState(() => _loading = true);
-    final token = await _getToken();
-    if (token == null) return;
 
     try {
-      final fetched = await _service.fetchMealPlan(token);
+      final fetched = await _service.fetchMealPlan();
+
       setState(() {
         meals = fetched;
         _loading = false;
       });
+
+      _setupAnimations();
     } catch (e) {
       setState(() => _loading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al cargar: $e')));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cargar: $e')),
+      );
     }
   }
 
@@ -99,35 +106,127 @@ class _MealPlanScreenState extends State<MealPlanScreen>
       _loading = true;
       _replacingMeal = true;
     });
-    final token = await _getToken();
-    if (token == null) return;
 
     try {
-      final generated = await _service.generateDailyMenu(token);
+      final generated = await _service.generateDailyMenu();
+
       setState(() {
         meals = generated;
+        _loading = false;
+        _replacingMeal = false;
       });
+
       _setupAnimations();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("✨ Menú listo!")));
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Menú generado correctamente")),
+      );
+    } on ProfileIncompleteException catch (e) {
       setState(() {
         _loading = false;
         _replacingMeal = false;
       });
+
+      _showProfileIncompleteError(e);
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _replacingMeal = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
     }
   }
 
-  // Aquí puedes agregar _replaceMeal y _toggleMealCompleted de manera similar usando _service
+  Future<void> _replaceMeal(String type, Meal meal) async {
+    setState(() => _replacingMeal = true);
+
+    try {
+      final newMeal = await _service.replaceMeal(meal);
+
+      setState(() {
+        final index = meals[type]?.indexWhere((m) => m.id == meal.id);
+
+        if (index != null && index != -1) {
+          meals[type]![index] = newMeal;
+        }
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al reemplazar: $e')),
+      );
+    } finally {
+      setState(() => _replacingMeal = false);
+    }
+  }
+
+  Future<void> _toggleMealCompleted(String type, Meal meal) async {
+    try {
+      final updated = await _service.toggleMealCompleted(meal);
+
+      setState(() {
+        final index = meals[type]?.indexWhere((m) => m.id == meal.id);
+
+        if (index != null && index != -1) {
+          meals[type]![index] = updated;
+        }
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar: $e')),
+      );
+    }
+  }
+
+  void _showProfileIncompleteError(ProfileIncompleteException e) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return AlertDialog(
+          title: const Text("Perfil incompleto"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(e.message),
+              const SizedBox(height: 10),
+              const Text("Campos faltantes:"),
+              const SizedBox(height: 5),
+              ...e.missingFields.map((f) => Text("• $f")),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cerrar"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+
+                Navigator.pushNamed(
+                  context,
+                  '/profileSetup',
+                  arguments: {
+                    "missing_fields": e.missingFields,
+                  },
+                );
+              },
+              child: const Text("Completar perfil"),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     int animationIndex = 0;
+
     return Stack(
       children: [
         Scaffold(
@@ -153,97 +252,57 @@ class _MealPlanScreenState extends State<MealPlanScreen>
             onPressed: _generateDailyMenu,
             icon: const Icon(Icons.auto_awesome),
             label: const Text("Generar menú"),
-            backgroundColor: Colors.green[400],
+            backgroundColor: Colors.green,
           ),
           body: _loading
               ? const Center(child: CircularProgressIndicator())
               : meals.isEmpty
-              ? const Center(child: Text("No hay menú disponible"))
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: meals.entries.map((entry) {
-                      final type = entry.key;
-                      final list = entry.value;
-                      return Column(
+                  ? const Center(child: Text("No hay menú disponible"))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            type[0].toUpperCase() + type.substring(1),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Column(
-                            children: list.map((meal) {
-                              Widget widget = MealCard(
-                                meal: meal,
-                                onReplace: () async {
-                                  setState(() => _replacingMeal = true);
-                                  final token = await _getToken();
-                                  if (token == null) return;
-                                  try {
-                                    final newMeal = await _service.replaceMeal(
-                                      token,
-                                      meal,
+                        children: meals.entries.map((entry) {
+                          final type = entry.key;
+                          final list = entry.value;
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                type[0].toUpperCase() + type.substring(1),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Column(
+                                children: list.map((meal) {
+                                  Widget card = MealCard(
+                                    meal: meal,
+                                    onReplace: () => _replaceMeal(type, meal),
+                                    onToggleCompleted: () =>
+                                        _toggleMealCompleted(type, meal),
+                                  );
+
+                                  if (animationIndex < _animations.length) {
+                                    card = SlideTransition(
+                                      position: _animations[animationIndex],
+                                      child: card,
                                     );
-                                    setState(() {
-                                      // Reemplazar meal en la lista actual
-                                      final index = meals[type]!.indexOf(meal);
-                                      meals[type]![index] = newMeal;
-                                    });
-                                  } catch (e) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Error al reemplazar: $e',
-                                        ),
-                                      ),
-                                    );
-                                  } finally {
-                                    setState(() => _replacingMeal = false);
+                                    animationIndex++;
                                   }
-                                },
-                                onToggleCompleted: () async {
-                                  final token = await _getToken();
-                                  if (token == null) return;
-                                  try {
-                                    final updatedMeal = await _service
-                                        .toggleMealCompleted(token, meal);
-                                    setState(() {
-                                      final index = meals[type]!.indexOf(meal);
-                                      meals[type]![index] = updatedMeal;
-                                    });
-                                  } catch (e) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Error al actualizar: $e',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                              );
-                              if (animationIndex < _animations.length) {
-                                widget = SlideTransition(
-                                  position: _animations[animationIndex],
-                                  child: widget,
-                                );
-                                animationIndex++;
-                              }
-                              return widget;
-                            }).toList(),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ),
+
+                                  return card;
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                    ),
         ),
         if (_replacingMeal) const ReplacingOverlay(),
       ],

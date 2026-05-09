@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:http/http.dart' as http;
+import 'package:plan_nutricional_app/errors/profile_incomplete_exception.dart';
+import 'package:plan_nutricional_app/services/api_client.dart';
 import '../models/meal.dart';
 
 class MealPlanService {
@@ -10,12 +11,8 @@ class MealPlanService {
 
   String getRandomImage() => foodImages[Random().nextInt(foodImages.length)];
 
-  Future<Map<String, List<Meal>>> fetchMealPlan(String token) async {
-    final url = Uri.parse('http://127.0.0.1:8000/ai/menus?tipo=diario');
-    final response = await http.get(
-      url,
-      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-    );
+  Future<Map<String, List<Meal>>> fetchMealPlan() async {
+    final response = await ApiClient.get('/ai/menus?tipo=diario');
 
     if (response.statusCode != 200) return {};
 
@@ -30,6 +27,7 @@ class MealPlanService {
 
     final latest = list.first;
     final menu = (latest['menu'] ?? {}) as Map<String, dynamic>;
+
     final parsed = <String, List<Meal>>{};
 
     menu.forEach((type, items) {
@@ -41,20 +39,30 @@ class MealPlanService {
     return parsed;
   }
 
-  Future<Map<String, List<Meal>>> generateDailyMenu(String token) async {
-    final url = Uri.parse('http://127.0.0.1:8000/ai/menus/generate');
-    final response = await http.post(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({'tipo': 'diario'}),
+  Future<Map<String, List<Meal>>> generateDailyMenu() async {
+    final response = await ApiClient.post(
+      '/ai/menus/generate',
+      body: {'tipo': 'diario'},
     );
 
-    if (response.statusCode != 200) return {};
     final data = jsonDecode(response.body);
+
+    // 🔥 MANEJO DE ERROR REAL
+    if (response.statusCode != 200) {
+      final detail = data['detail'];
+
+      if (detail != null && detail['code'] == 'PROFILE_INCOMPLETE') {
+        throw ProfileIncompleteException(
+          message: detail['message'],
+          missingFields: List<String>.from(detail['missing_fields'] ?? []),
+        );
+      }
+
+      throw Exception(detail?['message'] ?? 'Error al generar menú');
+    }
+
     final menu = (data['menu'] ?? {}) as Map<String, dynamic>;
+
     final parsed = <String, List<Meal>>{};
 
     menu.forEach((type, items) {
@@ -66,44 +74,32 @@ class MealPlanService {
     return parsed;
   }
 
-  Future<Meal> replaceMeal(String token, Meal meal) async {
-    final url = Uri.parse(
-      'http://127.0.0.1:8000/ai/menus/${meal.planId}/replace-meal/${meal.id}',
-    );
-    final response = await http.post(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+  Future<Meal> replaceMeal(Meal meal) async {
+    final response = await ApiClient.post(
+      '/ai/menus/${meal.planId}/replace-meal/${meal.id}',
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Error ${response.statusCode} al reemplazar comida');
+      throw Exception('Error al reemplazar comida');
     }
 
     final data = jsonDecode(response.body);
     return Meal.fromJson(data, getRandomImage());
   }
 
-  Future<Meal> toggleMealCompleted(String token, Meal meal) async {
+  Future<Meal> toggleMealCompleted(Meal meal) async {
     final completed = !meal.completed;
-    final url = Uri.parse(
-      'http://127.0.0.1:8000/ai/meals/${meal.id}/toggle?completed=$completed',
-    );
-    final response = await http.patch(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+
+    final response = await ApiClient.patch(
+      '/ai/meals/${meal.id}/toggle?completed=$completed',
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Error ${response.statusCode} al actualizar comida');
+      throw Exception('Error al actualizar comida');
     }
 
     final data = jsonDecode(response.body);
-    return Meal.fromJson(data, meal.image); // mantener la imagen actual
+
+    return Meal.fromJson(data, meal.image);
   }
 }
