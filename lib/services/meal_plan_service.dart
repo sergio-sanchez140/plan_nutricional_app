@@ -124,19 +124,22 @@ class MealPlanService {
     return Meal.fromJson(data, getRandomImage());
   }
 
+  /// Marca o desmarca una comida como completada en el backend
   Future<Meal> toggleMealCompleted(Meal meal) async {
-    final completed = !meal.completed;
-
+    final bool nuevoEstado = !meal.completed;
+    
+    // Llamada PATCH al backend (ajusta la ruta si hace falta)
     final response = await ApiClient.patch(
-      '/ai/meals/${meal.id}/toggle?completed=$completed',
+      '/ai/meals/${meal.id}/toggle?completed=$nuevoEstado'
     );
 
-    if (response.statusCode != 200) {
-      throw Exception('Error al actualizar comida');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      // El backend nos devuelve el plato actualizado.
+      // Reutilizamos nuestro fromJson y le pasamos la misma imagen que ya tenía.
+      return Meal.fromJson(data, meal.image);
+    } else {
+      throw Exception("Error al marcar la comida (${response.statusCode})");
     }
-
-    final data = jsonDecode(response.body);
-
-    return Meal.fromJson(data, meal.image);
   }
 }
