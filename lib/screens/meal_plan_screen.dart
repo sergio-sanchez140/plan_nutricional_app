@@ -64,9 +64,7 @@ class _MealPlanScreenState extends State<MealPlanScreen>
         final animation = Tween<Offset>(
           begin: const Offset(-1.0, 0),
           end: Offset.zero,
-        ).animate(
-          CurvedAnimation(parent: controller, curve: Curves.easeOut),
-        );
+        ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOut));
 
         _controllers.add(controller);
         _animations.add(animation);
@@ -81,10 +79,16 @@ class _MealPlanScreenState extends State<MealPlanScreen>
   }
 
   Future<void> _fetchMealPlan() async {
+    print("🔥 FETCH MEAL PLAN START");
+
     setState(() => _loading = true);
 
     try {
+      print("➡️ llamando service");
+
       final fetched = await _service.fetchMealPlan();
+
+      print("✅ respuesta recibida: $fetched");
 
       setState(() {
         meals = fetched;
@@ -92,12 +96,15 @@ class _MealPlanScreenState extends State<MealPlanScreen>
       });
 
       _setupAnimations();
-    } catch (e) {
+    } catch (e, stack) {
+      print("❌ ERROR FETCH MEAL PLAN: $e");
+      print(stack);
+
       setState(() => _loading = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al cargar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al cargar: $e')));
     }
   }
 
@@ -134,9 +141,9 @@ class _MealPlanScreenState extends State<MealPlanScreen>
         _replacingMeal = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -154,9 +161,9 @@ class _MealPlanScreenState extends State<MealPlanScreen>
         }
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al reemplazar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al reemplazar: $e')));
     } finally {
       setState(() => _replacingMeal = false);
     }
@@ -174,9 +181,9 @@ class _MealPlanScreenState extends State<MealPlanScreen>
         }
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al actualizar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al actualizar: $e')));
     }
   }
 
@@ -210,9 +217,7 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                 Navigator.pushNamed(
                   context,
                   '/profileSetup',
-                  arguments: {
-                    "missing_fields": e.missingFields,
-                  },
+                  arguments: {"missing_fields": e.missingFields},
                 );
               },
               child: const Text("Completar perfil"),
@@ -257,52 +262,52 @@ class _MealPlanScreenState extends State<MealPlanScreen>
           body: _loading
               ? const Center(child: CircularProgressIndicator())
               : meals.isEmpty
-                  ? const Center(child: Text("No hay menú disponible"))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
+              ? const Center(child: Text("No hay menú disponible"))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: meals.entries.map((entry) {
+                      final type = entry.key;
+                      final list = entry.value;
+
+                      return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: meals.entries.map((entry) {
-                          final type = entry.key;
-                          final list = entry.value;
+                        children: [
+                          Text(
+                            type[0].toUpperCase() + type.substring(1),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Column(
+                            children: list.map((meal) {
+                              Widget card = MealCard(
+                                meal: meal,
+                                onReplace: () => _replaceMeal(type, meal),
+                                onToggleCompleted: () =>
+                                    _toggleMealCompleted(type, meal),
+                              );
 
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                type[0].toUpperCase() + type.substring(1),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Column(
-                                children: list.map((meal) {
-                                  Widget card = MealCard(
-                                    meal: meal,
-                                    onReplace: () => _replaceMeal(type, meal),
-                                    onToggleCompleted: () =>
-                                        _toggleMealCompleted(type, meal),
-                                  );
+                              if (animationIndex < _animations.length) {
+                                card = SlideTransition(
+                                  position: _animations[animationIndex],
+                                  child: card,
+                                );
+                                animationIndex++;
+                              }
 
-                                  if (animationIndex < _animations.length) {
-                                    card = SlideTransition(
-                                      position: _animations[animationIndex],
-                                      child: card,
-                                    );
-                                    animationIndex++;
-                                  }
-
-                                  return card;
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                              return card;
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
         ),
         if (_replacingMeal) const ReplacingOverlay(),
       ],

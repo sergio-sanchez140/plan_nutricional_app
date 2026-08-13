@@ -3,8 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
+  // Si usas emulador Android:
   static const String baseUrl = 'http://127.0.0.1:8000';
-
   static Future<Map<String, String>> _headers() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('access_token');
@@ -34,5 +34,11 @@ class ApiClient {
     final headers = await _headers();
 
     return await http.patch(url, headers: headers, body: jsonEncode(body));
+  }
+
+  static Future<http.Response> put(String endpoint, {Object? body}) async {
+    final url = Uri.parse('$baseUrl$endpoint');
+    final headers = await _headers();
+    return await http.put(url, headers: headers, body: jsonEncode(body));
   }
 }

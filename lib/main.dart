@@ -58,8 +58,9 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _checkSession() async {
     final prefs = await SharedPreferences.getInstance();
-
     final token = prefs.getString('access_token');
+
+    if (!mounted) return;
 
     setState(() {
       _isLoggedIn = token != null && token.isNotEmpty;
@@ -70,14 +71,14 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    if (_isLoggedIn) {
-      return const MainScreen();
-    }
-
-    return const OnboardingScreen();
+    return _isLoggedIn
+        ? const MainScreen()
+        : const OnboardingScreen();
   }
 }
 

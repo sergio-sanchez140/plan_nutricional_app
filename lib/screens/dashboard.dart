@@ -3,17 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_client.dart';
 
 class Dashboard extends StatefulWidget {
   final Function(int)? onTabSelected;
 
-  const Dashboard({Key? key, this.onTabSelected}) : super(key: key);
+  const Dashboard({super.key, this.onTabSelected});
 
   @override
   _DashboardState createState() => _DashboardState();
 }
 
-class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMixin {
+class _DashboardState extends State<Dashboard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
 
@@ -28,8 +30,10 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
 
     _fetchUserData();
@@ -38,44 +42,51 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
   Future<void> _fetchUserData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
 
-      if (token == null || token.isEmpty) {
-        _showError("Sesión expirada. Inicia sesión de nuevo.");
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/login');
-        }
-        return;
-      }
-
-      final url = Uri.parse('http://127.0.0.1:8000/db/me');
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      // 1. Carga instantánea desde la caché local (Single Source of Truth)
+      final cachedData = prefs.getString('user_data');
+      if (cachedData != null) {
+        final data = jsonDecode(cachedData);
         setState(() {
           userData = data;
           perfilIncompleto = _checkPerfilIncompleto(data);
           _loading = false;
         });
-      } else if (response.statusCode == 401) {
-        _showError("Sesión no válida. Vuelve a iniciar sesión.");
+      }
+
+      // 2. Petición en segundo plano para traer datos frescos
+      final token = prefs.getString('access_token');
+      if (token == null || token.isEmpty) {
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
+        return;
+      }
+
+      final response = await ApiClient.get('/db/me');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        // Guardamos el JSON completo en caché para que Perfil lo lea al instante
+        await prefs.setString('user_data', response.body);
+        await prefs.setString('user_email', data['email'] ?? '');
+
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/login');
+          setState(() {
+            userData = data;
+            perfilIncompleto = _checkPerfilIncompleto(data);
+            _loading = false;
+          });
         }
-      } else {
-        _showError("Error ${response.statusCode} al cargar datos");
-        setState(() => _loading = false);
+      } else if (response.statusCode == 401) {
+        _showError("Sesión expirada. Inicia sesión de nuevo.");
+        await prefs.clear();
+        if (mounted) Navigator.pushReplacementNamed(context, '/login');
       }
     } catch (e) {
-      _showError("No se pudo conectar al servidor");
-      setState(() => _loading = false);
+      if (userData == null) {
+        _showError("No se pudo conectar al servidor");
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -102,9 +113,7 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final nombre = userData?['nombre'] ?? "Usuario";
@@ -117,7 +126,10 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
         title: Text(
           "¡Hola, $nombre! 🌟",
           style: const TextStyle(
-              color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22),
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
         ),
         actions: [
           IconButton(
@@ -138,19 +150,27 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                 child: ListTile(
                   leading: const Icon(Icons.warning, color: Colors.orange),
                   title: const Text("Tu perfil está incompleto"),
-                  subtitle: const Text("Completa tus datos para personalizar tu plan"),
+                  subtitle: const Text(
+                    "Completa tus datos para personalizar tu plan",
+                  ),
                   trailing: ElevatedButton(
                     child: const Text("Completar"),
                     onPressed: () {
                       final email = userData?["email"];
-                      Navigator.pushNamed(context, '/profileSetup', arguments: email);
+                      Navigator.pushNamed(
+                        context,
+                        '/profileSetup',
+                        arguments: email,
+                      );
                     },
                   ),
                 ),
               ),
             // --- Resumen de calorías y macros ---
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
               elevation: 6,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -163,10 +183,14 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                       center: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
-                          Text("1300",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 20)),
-                          Text("kcal")
+                          Text(
+                            "1300",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                          Text("kcal"),
                         ],
                       ),
                       progressColor: Colors.green,
@@ -180,9 +204,13 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("Resumen Diario",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 18)),
+                          const Text(
+                            "Resumen Diario",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
                           const SizedBox(height: 10),
                           Text("Edad: ${userData?['edad'] ?? '-'}"),
                           Text("Peso: ${userData?['peso'] ?? '-'} kg"),
@@ -200,7 +228,9 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
             SlideTransition(
               position: _slideAnimation,
               child: Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 color: Colors.green[50],
                 elevation: 4,
                 child: const Padding(
@@ -213,7 +243,9 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                         child: Text(
                           "Hoy aumenta tu ingesta de proteína 🥩 para optimizar tu energía",
                           style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     ],
@@ -223,8 +255,10 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
             ),
             const SizedBox(height: 20),
             // --- Acciones rápidas ---
-            const Text("Acciones rápidas",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              "Acciones rápidas",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -236,8 +270,10 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
             ),
             const SizedBox(height: 20),
             // --- Retos / Gamificación ---
-            const Text("Retos del día",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              "Retos del día",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             const SizedBox(height: 10),
             _challengeCard("Completa tu meta de proteína +5g", 0.6),
             _challengeCard("Bebe 2L de agua 💧", 0.8),
@@ -262,9 +298,11 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
             child: Icon(icon, color: Colors.green[700]),
           ),
           const SizedBox(height: 6),
-          Text(label,
-              style: const TextStyle(fontSize: 12),
-              textAlign: TextAlign.center),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -279,8 +317,10 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
             const SizedBox(height: 6),
             LinearProgressIndicator(
               value: progress,

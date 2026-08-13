@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_client.dart';
 
 class RegisterDataScreen extends StatefulWidget {
   const RegisterDataScreen({super.key});
@@ -9,6 +11,8 @@ class RegisterDataScreen extends StatefulWidget {
 
 class _RegisterDataScreenState extends State<RegisterDataScreen> {
   final _formKey = GlobalKey<FormState>();
+
+  bool _loading = false; // <-- Añade esta línea
 
   int? edad;
   double? peso;
@@ -187,13 +191,63 @@ class _RegisterDataScreenState extends State<RegisterDataScreen> {
 
                 // Botón
                 ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _formKey.currentState!.save();
-                      // TODO: Guardar en API
-                      Navigator.pushReplacementNamed(context, '/dashboard');
-                    }
-                  },
+                  onPressed: _loading
+                      ? null
+                      : () async {
+                          // 1. Validamos que el usuario haya rellenado todos los campos del formulario
+                          if (_formKey.currentState!.validate()) {
+                            _formKey.currentState!.save();
+
+                            setState(() {
+                              _loading = true;
+                            });
+
+                            try {
+                              // 2. Recuperamos el email que guardamos en el login/registro
+                              final prefs = await SharedPreferences.getInstance();
+                              final email = prefs.getString('user_email');
+
+                              if (email == null || email.isEmpty) {
+                                throw Exception("No se encontró el email del usuario");
+                              }
+
+                              // 3. Formateamos los datos como los espera tu backend en Python
+                              final body = {
+                                "edad": edad,
+                                "peso": peso,
+                                "altura": altura,
+                                "genero": genero?.toLowerCase(), // "hombre" / "mujer"
+                                "nivel_actividad": nivelActividad?.toLowerCase(), // "sedentario", "activo", etc.
+                                "objetivo": objetivo?.toLowerCase().split(' ')[0], // Toma la primera palabra: "perder", "mantener", "ganar"
+                                "preferencias": [],
+                                "restricciones": []
+                              };
+
+                              // 4. Enviamos la petición PUT a /db/users/email@ejemplo.com
+                              final response = await ApiClient.put('/db/users/$email', body: body);
+
+                              if (response.statusCode == 200 || response.statusCode == 201) {
+                                if (!mounted) return;
+                                // Redirigimos a la pantalla principal
+                                Navigator.pushReplacementNamed(context, '/main');
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("Error del servidor: ${response.statusCode}")),
+                                );
+                              }
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Error al guardar datos: $e")),
+                              );
+                            } finally {
+                              if (mounted) {
+                                setState(() {
+                                  _loading = false;
+                                });
+                              }
+                            }
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.greenAccent.shade700,
                     shape: RoundedRectangleBorder(
@@ -201,14 +255,16 @@ class _RegisterDataScreenState extends State<RegisterDataScreen> {
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
-                  child: const Text(
-                    "Continuar",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _loading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text(
+                          "Continuar",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                 )
               ],
             ),

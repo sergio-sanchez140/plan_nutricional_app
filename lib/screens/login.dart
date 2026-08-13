@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_client.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,52 +16,38 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _loading = false;
 
-  Future<void> _login() async {
-    setState(() {
-      _loading = true;
-    });
-
-    final url = Uri.parse('http://127.0.0.1:8000/db/login');
-    final body = jsonEncode({
-      "email": _emailController.text.trim(),
-      "password": _passwordController.text
-    });
+Future<void> _login() async {
+    setState(() => _loading = true);
 
     try {
-      final response = await http.post(url,
-          headers: {"Content-Type": "application/json"}, body: body);
-
-      print('Status code: ${response.statusCode}');
-      print('Headers: ${response.headers}');
-      print('Body: ${response.body}');
+      // Usamos tu ApiClient en lugar de http directo
+      final response = await ApiClient.post('/db/login', body: {
+        "email": _emailController.text.trim(),
+        "password": _passwordController.text
+      });
 
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final data = jsonDecode(response.body);
         final token = data['access_token'];
 
-        // Guardar token en SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('access_token', token);
+        // Guardamos el email para usarlo en el perfil
+        await prefs.setString('user_email', _emailController.text.trim());
 
+        if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/main');
       } else {
         String msg = 'Error en login';
-        if (response.body.isNotEmpty) {
-          try {
-            final error = jsonDecode(response.body);
-            msg = error['message'] ?? msg;
-          } catch (_) {}
-        }
+        try {
+          msg = jsonDecode(response.body)['message'] ?? msg;
+        } catch (_) {}
         _showError(msg);
       }
-    } catch (e, stacktrace) {
-      print("EXCEPCIÓN: $e");
-      print("STACKTRACE: $stacktrace");
-      _showError("Ocurrió un error inesperado");
+    } catch (e) {
+      _showError("Ocurrió un error inesperado de conexión");
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      setState(() => _loading = false);
     }
   }
 

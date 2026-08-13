@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_client.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -49,11 +50,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         "password": _passwordController.text,
       });
 
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: body,
-      );
+      // Cambiamos el http.post por ApiClient
+      final response = await ApiClient.post('/db/users', body: {
+        "nombre": _nameController.text.trim(),
+        "email": _emailController.text.trim(),
+        "password": _passwordController.text,
+      });
 
       print("REGISTER STATUS: ${response.statusCode}");
       print("REGISTER BODY: ${response.body}");
@@ -78,7 +80,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
         if (!mounted) return;
 
-        Navigator.pushReplacementNamed(context, '/main');
+        Navigator.pushReplacementNamed(context, '/registerData');
       } else {
         String msg = "Error al registrarse";
 

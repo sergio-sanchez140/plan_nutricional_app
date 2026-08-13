@@ -24,10 +24,11 @@ class Meal {
   });
 
   factory Meal.fromJson(Map<String, dynamic> json, String image) {
-    final macros = json['macros'] ?? {};
+    final macros = json['macros'] as Map<String, dynamic>? ?? {};
+
     return Meal(
-      id: json['id'],
-      planId: json['plan_id'],
+      id: json['id'] ?? 0,
+      planId: json['plan_id'] ?? 0,
       name: json['nombre'] ?? 'Comida',
       cantidad: json['cantidad'] ?? '',
       carbs: (macros['carbohidratos_g'] ?? 0).toDouble(),
