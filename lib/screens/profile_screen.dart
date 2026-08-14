@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_client.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -15,8 +17,9 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic> _userData = {};
   bool _loading = true;
-  String avatarUrl =
-      "https://images.ctfassets.net/h6goo9gw1hh6/2sNZtFAWOdP1lmQ33VwRN3/e40b6ea6361a1abe28f32e7910f63b66/1-intro-photo-final.jpg?w=1200&h=992&fl=progressive&q=70&fm=jpg";
+  bool _isUploadingPicture = false;
+
+  String? avatarUrl;
 
   @override
   void initState() {
@@ -24,15 +27,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadProfileFromCache();
   }
 
+  void _updateAvatarUrlFromData(Map<String, dynamic> data) {
+    if (data.containsKey('avatar_url') && data['avatar_url'] != null) {
+      avatarUrl = data['avatar_url'];
+    } else if (data.containsKey('foto_perfil') && data['foto_perfil'] != null) {
+      // Por si acaso Google guarda en otra key
+      avatarUrl = data['foto_perfil'];
+    }
+  }
+
   Future<void> _loadProfileFromCache() async {
     final prefs = await SharedPreferences.getInstance();
     final cachedData = prefs.getString('user_data');
 
     if (cachedData != null) {
+      final decodedData = jsonDecode(cachedData);
       setState(() {
-        _userData = jsonDecode(cachedData);
+        _userData = decodedData;
+        _updateAvatarUrlFromData(_userData);
         _loading = false;
       });
+      // Aún teniendo caché, pedimos datos frescos de fondo para actualizar nivel/fotos
+      _fetchProfileFresh();
     } else {
       _fetchProfileFresh();
     }
@@ -44,13 +60,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (response.statusCode == 200) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_data', response.body);
-        setState(() {
-          _userData = jsonDecode(response.body);
-          _loading = false;
-        });
+        final freshData = jsonDecode(response.body);
+
+        if (mounted) {
+          setState(() {
+            _userData = freshData;
+            _updateAvatarUrlFromData(_userData);
+            _loading = false;
+          });
+        }
       }
     } catch (e) {
-      setState(() => _loading = false);
+      if (mounted && _loading) setState(() => _loading = false);
+    }
+  }
+
+  // --- NUEVA FUNCIÓN PARA SUBIR LA FOTO ---
+  Future<void> _pickAndUploadImage() async {
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+    if (image == null) return;
+
+    setState(() => _isUploadingPicture = true);
+
+    try {
+      final response = await ApiClient.postMultipart(
+        '/db/users/me/avatar',
+        image,
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = await response.stream.bytesToString();
+        final data = jsonDecode(responseData);
+
+        setState(() {
+          avatarUrl = data['avatar_url'];
+        });
+
+        _userData['avatar_url'] = data['avatar_url'];
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_data', jsonEncode(_userData));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('¡Foto actualizada!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error al subir'),
+            backgroundColor: Colors.red,
+          ),
+        );
+    } finally {
+      if (mounted) setState(() => _isUploadingPicture = false);
     }
   }
 
@@ -142,17 +212,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.green.shade300,
-                        width: 3,
-                      ),
-                    ),
-                    child: CircleAvatar(
-                      radius: 40,
-                      backgroundImage: NetworkImage(avatarUrl),
+                  GestureDetector(
+                    onTap: _isUploadingPicture ? null : _pickAndUploadImage,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.green.shade300,
+                              width: 3,
+                            ),
+                          ),
+                          child: CircleAvatar(
+                            radius: 40,
+                            backgroundColor: Colors.white,
+                            backgroundImage: avatarUrl != null
+                                ? NetworkImage(avatarUrl!)
+                                : null,
+                            child: avatarUrl == null
+                                ? Icon(
+                                    Icons.person,
+                                    size: 40,
+                                    color: Colors.green.shade200,
+                                  )
+                                : null,
+                          ),
+                        ),
+                        if (_isUploadingPicture)
+                          Container(
+                            width: 86,
+                            height: 86,
+                            decoration: const BoxDecoration(
+                              color: Colors.black45,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Padding(
+                              padding: EdgeInsets.all(24.0),
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            ),
+                          ),
+                        if (!_isUploadingPicture)
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade600,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 20),

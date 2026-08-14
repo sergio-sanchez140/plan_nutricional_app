@@ -8,7 +8,7 @@ import 'services/api_client.dart'; // Importante para la IA
 
 import 'screens/dashboard.dart'; // Apuntamos al archivo correcto
 import 'screens/meal_plan_screen.dart';
-import 'screens/challenges_screen.dart';
+import 'screens/challenges.dart';
 import 'screens/profile_screen.dart';
 import 'screens/onboarding.dart';
 import 'screens/login.dart';
@@ -206,7 +206,14 @@ class _MainScreenState extends State<MainScreen> {
           });
         },
       ),
-      const MealPlanScreen(),
+      // 👇 MIRA EL CAMBIO AQUÍ 👇
+      MealPlanScreen(
+        onTabSelected: (index) {
+          setState(() {
+            _currentTab = index;
+          });
+        },
+      ),
       const ChallengesScreen(),
       const ProfileScreen(),
     ];
@@ -214,8 +221,7 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       body: IndexedStack(index: _currentTab, children: tabs),
 
-      // AQUÍ ESTÁ EL BOTÓN FLOTANTE (Visible en Tab 0 y 1)
-      floatingActionButton: (_currentTab == 0 || _currentTab == 1)
+      floatingActionButton: _currentTab == 0
           ? FloatingActionButton.extended(
               onPressed: _openAIFoodLogger,
               icon: const Icon(Icons.auto_awesome, color: Colors.white),

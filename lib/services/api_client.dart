@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ApiClient {
   // Si usas emulador Android:
@@ -40,5 +41,25 @@ class ApiClient {
     final url = Uri.parse('$baseUrl$endpoint');
     final headers = await _headers();
     return await http.put(url, headers: headers, body: jsonEncode(body));
+  }
+
+  static Future<http.StreamedResponse> postMultipart(String endpoint, XFile file) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token');
+
+    final url = Uri.parse('$baseUrl$endpoint');
+    final request = http.MultipartRequest('POST', url);
+
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    // 🔥 LA MAGIA PARA QUE FUNCIONE EN WEB Y MÓVIL
+    final bytes = await file.readAsBytes();
+    request.files.add(
+      http.MultipartFile.fromBytes('file', bytes, filename: file.name)
+    );
+
+    return await request.send();
   }
 }

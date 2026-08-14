@@ -50,7 +50,7 @@ class MealPlanService {
             for (var item in comidasList) {
               if (item is Map<String, dynamic>) {
                 final meal = Meal.fromJson(item, getRandomImage());
-                
+
                 // Agrupamos en el mapa por el nombre del turno
                 if (!resultMap.containsKey(turnoKey)) {
                   resultMap[turnoKey] = [];
@@ -68,7 +68,7 @@ class MealPlanService {
 
   Future<Map<String, List<Meal>>> generateDailyMenu() async {
     final response = await ApiClient.post(
-      '/ai/menus/generate',
+      '/ai/menus/generate', // o /db/ai/menus/generate según tu backend
       body: {'tipo': 'diario'},
     );
 
@@ -80,13 +80,12 @@ class MealPlanService {
       throw Exception('Respuesta inválida del servidor');
     }
 
-    // 🔥 MANEJO DE ERROR REAL
     if (response.statusCode != 200) {
       final detail = data is Map ? data['detail'] : null;
 
       if (detail is Map && detail['code'] == 'PROFILE_INCOMPLETE') {
         throw ProfileIncompleteException(
-          message: detail['message'],
+          message: detail['message'] ?? "Perfil incompleto",
           missingFields: List<String>.from(detail['missing_fields'] ?? []),
         );
       }
@@ -99,7 +98,6 @@ class MealPlanService {
     }
 
     final menu = (data['menu'] ?? {}) as Map<String, dynamic>;
-
     final parsed = <String, List<Meal>>{};
 
     menu.forEach((type, items) {
@@ -127,10 +125,10 @@ class MealPlanService {
   /// Marca o desmarca una comida como completada en el backend
   Future<Meal> toggleMealCompleted(Meal meal) async {
     final bool nuevoEstado = !meal.completed;
-    
+
     // Llamada PATCH al backend (ajusta la ruta si hace falta)
     final response = await ApiClient.patch(
-      '/ai/meals/${meal.id}/toggle?completed=$nuevoEstado'
+      '/ai/meals/${meal.id}/toggle?completed=$nuevoEstado',
     );
 
     if (response.statusCode == 200) {

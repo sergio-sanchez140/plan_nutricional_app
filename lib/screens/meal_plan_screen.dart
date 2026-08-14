@@ -6,10 +6,12 @@ import '../widgets/replacing_overlay.dart';
 import '../errors/profile_incomplete_exception.dart';
 
 class MealPlanScreen extends StatefulWidget {
-  const MealPlanScreen({Key? key}) : super(key: key);
+  final Function(int)? onTabSelected; // <--- AÑADIR ESTO
+
+  const MealPlanScreen({super.key, this.onTabSelected}); // <--- AÑADIR ESTO
 
   @override
-  State<MealPlanScreen> createState() => _MealPlanScreenState();
+  _MealPlanScreenState createState() => _MealPlanScreenState();
 }
 
 class _MealPlanScreenState extends State<MealPlanScreen>
@@ -211,16 +213,19 @@ class _MealPlanScreenState extends State<MealPlanScreen>
               child: const Text("Cerrar"),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(context); // 1. Cierra el popup
 
-                Navigator.pushNamed(
-                  context,
-                  '/profileSetup',
-                  arguments: {"missing_fields": e.missingFields},
-                );
+                // 2. Viaja a la pestaña de Perfil (índice 3)
+                if (widget.onTabSelected != null) {
+                  widget.onTabSelected!(3);
+                }
               },
-              child: const Text("Completar perfil"),
+              child: const Text(
+                "Completar perfil",
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         );
