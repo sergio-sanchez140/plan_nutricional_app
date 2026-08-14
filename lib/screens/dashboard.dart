@@ -11,10 +11,12 @@ class Dashboard extends StatefulWidget {
   const Dashboard({super.key, this.onTabSelected});
 
   @override
-  _DashboardState createState() => _DashboardState();
+  DashboardState createState() => DashboardState(); // ¡Guión bajo quitado!
 }
 
-class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMixin {
+class DashboardState extends State<Dashboard>
+    with SingleTickerProviderStateMixin {
+  // ¡Guión bajo quitado!
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
 
@@ -22,13 +24,14 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
   bool _loading = true;
   bool perfilIncompleto = false;
 
-  // Nuevas variables para la Fase 3
+  // Variables de Progreso
   double caloriasConsumidas = 0.0;
   Map<String, dynamic> macrosConsumidos = {
     "carbohidratos_g": 0,
     "proteinas_g": 0,
-    "grasas_g": 0
+    "grasas_g": 0,
   };
+  List<String> historialConsumo = [];
 
   @override
   void initState() {
@@ -43,14 +46,14 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
 
-    _fetchInitialData();
+    fetchInitialData(); // ¡Guión bajo quitado!
   }
 
-  // Ahora cargamos el Usuario Y el Progreso de hoy
-  Future<void> _fetchInitialData() async {
+  // --- AQUÍ QUITAMOS EL GUIÓN BAJO PARA HACERLA PÚBLICA ---
+  Future<void> fetchInitialData() async {
     setState(() => _loading = true);
     await _fetchUserData();
-    await _fetchTodayProgress(); // Llamada al nuevo endpoint
+    await _fetchTodayProgress();
     if (mounted) setState(() => _loading = false);
   }
 
@@ -63,11 +66,16 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
           setState(() {
             caloriasConsumidas = (data['calorias_consumidas'] ?? 0).toDouble();
             macrosConsumidos = data['macros_consumidos'] ?? macrosConsumidos;
+
+            // Leemos el array de historial (con safe cast para evitar errores)
+            if (data['historial'] != null) {
+              historialConsumo = List<String>.from(data['historial']);
+            }
           });
         }
       }
     } catch (e) {
-      // Ignoramos errores de conexión silenciosamente para no asustar al usuario
+      // Ignoramos errores de red temporalmente
     }
   }
 
@@ -143,10 +151,12 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
     }
 
     final nombre = userData?['nombre'] ?? "Usuario";
-    
-    // Calculamos el progreso. Si no tienes meta en tu BD, ponemos 2000 por defecto.
-    final double caloriasMeta = (userData?['calorias_objetivo'] ?? 2000).toDouble();
-    final double progresoCalorias = (caloriasConsumidas / caloriasMeta).clamp(0.0, 1.0);
+    final double caloriasMeta = (userData?['calorias_objetivo'] ?? 2000)
+        .toDouble();
+    final double progresoCalorias = (caloriasConsumidas / caloriasMeta).clamp(
+      0.0,
+      1.0,
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -155,12 +165,15 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
         backgroundColor: Colors.transparent,
         title: Text(
           "¡Hola, $nombre! 🌟",
-          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22),
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
         ),
       ),
-      // Envolvemos con RefreshIndicator para poder actualizar arrastrando hacia abajo
       body: RefreshIndicator(
-        onRefresh: _fetchInitialData,
+        onRefresh: fetchInitialData,
         color: Colors.green,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -175,19 +188,24 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                   child: ListTile(
                     leading: const Icon(Icons.warning, color: Colors.orange),
                     title: const Text("Tu perfil está incompleto"),
-                    subtitle: const Text("Completa tus datos para personalizar tu plan"),
+                    subtitle: const Text(
+                      "Completa tus datos para personalizar tu plan",
+                    ),
                     trailing: ElevatedButton(
                       child: const Text("Completar"),
                       onPressed: () {
-                        if (widget.onTabSelected != null) widget.onTabSelected!(3); 
+                        if (widget.onTabSelected != null)
+                          widget.onTabSelected!(3);
                       },
                     ),
                   ),
                 ),
-                
-              // --- EL NUEVO RESUMEN DE CALORÍAS REAL ---
+
+              // --- 1. RESUMEN DE CALORÍAS ---
               Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 elevation: 4,
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
@@ -204,9 +222,19 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                               children: [
                                 Text(
                                   caloriasConsumidas.toInt().toString(),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: Colors.green),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 22,
+                                    color: Colors.green,
+                                  ),
                                 ),
-                                Text("/ ${caloriasMeta.toInt()} kcal", style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                Text(
+                                  "/ ${caloriasMeta.toInt()} kcal",
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey,
+                                  ),
+                                ),
                               ],
                             ),
                             progressColor: Colors.green,
@@ -220,13 +248,32 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text("Progreso de Hoy", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                                const Text(
+                                  "Progreso de Hoy",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
                                 const SizedBox(height: 10),
-                                _MacroRow(label: "Carbos", value: "${macrosConsumidos['carbohidratos_g']}g", color: Colors.blue),
+                                _MacroRow(
+                                  label: "Carbos",
+                                  value:
+                                      "${macrosConsumidos['carbohidratos_g']}g",
+                                  color: Colors.blue,
+                                ),
                                 const SizedBox(height: 4),
-                                _MacroRow(label: "Proteínas", value: "${macrosConsumidos['proteinas_g']}g", color: Colors.red),
+                                _MacroRow(
+                                  label: "Proteínas",
+                                  value: "${macrosConsumidos['proteinas_g']}g",
+                                  color: Colors.red,
+                                ),
                                 const SizedBox(height: 4),
-                                _MacroRow(label: "Grasas", value: "${macrosConsumidos['grasas_g']}g", color: Colors.orange),
+                                _MacroRow(
+                                  label: "Grasas",
+                                  value: "${macrosConsumidos['grasas_g']}g",
+                                  color: Colors.orange,
+                                ),
                               ],
                             ),
                           ),
@@ -238,10 +285,56 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
               ),
               const SizedBox(height: 20),
 
+              // --- 2. HISTORIAL DE COMIDAS (Nuevo) ---
+              if (historialConsumo.isNotEmpty) ...[
+                const Text(
+                  "Comidas de hoy",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  elevation: 2,
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics:
+                        const NeverScrollableScrollPhysics(), // Evita conflicto con el scroll general
+                    itemCount: historialConsumo.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1, indent: 60, endIndent: 20),
+                    itemBuilder: (context, index) {
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.green.shade50,
+                          child: Icon(
+                            Icons.check_circle,
+                            color: Colors.green.shade600,
+                            size: 22,
+                          ),
+                        ),
+                        title: Text(
+                          historialConsumo[index],
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // --- 3. RECOMENDACIÓN IA ---
               SlideTransition(
                 position: _slideAnimation,
                 child: Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                   color: Colors.green[50],
                   elevation: 4,
                   child: const Padding(
@@ -253,7 +346,10 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                         Expanded(
                           child: Text(
                             "Mantén un buen ritmo. Trata de cenar al menos 2 horas antes de ir a dormir 🌙",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       ],
@@ -262,7 +358,11 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                 ),
               ),
               const SizedBox(height: 24),
-              const Text("Acciones rápidas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+
+              const Text(
+                "Acciones rápidas",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -272,7 +372,7 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
                   _quickActionButton(Icons.person, "Perfil", 3),
                 ],
               ),
-              const SizedBox(height: 80), // Espacio extra para el botón flotante
+              const SizedBox(height: 80),
             ],
           ),
         ),
@@ -295,20 +395,27 @@ class _DashboardState extends State<Dashboard> with SingleTickerProviderStateMix
             child: Icon(icon, color: Colors.green[700]),
           ),
           const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 12), textAlign: TextAlign.center),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
   }
 }
 
-// Widget auxiliar para pintar los macros en el dashboard
 class _MacroRow extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
-  const _MacroRow({required this.label, required this.value, required this.color});
+  const _MacroRow({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -318,7 +425,10 @@ class _MacroRow extends StatelessWidget {
         const SizedBox(width: 6),
         Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
         const Spacer(),
-        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+        ),
       ],
     );
   }

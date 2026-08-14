@@ -41,9 +41,10 @@ dependencies:
   # Paquetes que hemos movido desde dev_dependencies
   firebase_core: ^2.15.1
   firebase_auth: ^4.17.4
-  google_sign_in: ^6.2.1
   percent_indicator: ^4.2.2 
   confetti: ^0.7.0
+  google_sign_in: ^6.2.1
+  google_sign_in_web: ^0.12.3
 
 dev_dependencies:
   flutter_test:

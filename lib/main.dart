@@ -91,6 +91,10 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentTab = 0;
 
+  // 1. CREAMOS LA LLAVE (Walkie-Talkie)
+  final GlobalKey<DashboardState> _dashboardKey =
+      GlobalKey<DashboardState>(); // <--- NUEVO
+
   // Feedback visual tras el registro exitoso
   void _showAIFeedbackDialog(Map<String, dynamic> iaData) {
     final calorias = iaData['calorias'] ?? 0;
@@ -136,8 +140,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
             onPressed: () {
               Navigator.pop(context);
-              // Fuerza la recarga del dashboard si hiciera falta
-              setState(() {});
+              _dashboardKey.currentState?.fetchInitialData();
             },
             child: const Text(
               "Genial",
@@ -196,6 +199,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     final List<Widget> tabs = [
       Dashboard(
+        key: _dashboardKey,
         onTabSelected: (index) {
           setState(() {
             _currentTab = index;
