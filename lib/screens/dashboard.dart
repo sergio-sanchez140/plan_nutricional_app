@@ -1,18 +1,22 @@
 // Archivo: lib/screens/dashboard.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:percent_indicator/percent_indicator.dart';
-import '../widgets/free_intake_sheet.dart';
-import 'package:plan_nutricional_app/widgets/macro_chip.dart';
-import 'package:plan_nutricional_app/widgets/quick_action_button.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../services/api_client.dart';
-import '../widgets/macro_row.dart';
 import 'package:image_picker/image_picker.dart';
-import '../widgets/calories_summary_card.dart';
-import '../widgets/meals_history_card.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../services/api_client.dart';
 import '../widgets/ai_recommendation_card.dart';
-import '../utils/dashboard_modals.dart';
+import '../widgets/calories_summary_card.dart';
+import '../widgets/free_intake_sheet.dart';
+import '../widgets/meals_history_card.dart';
+import '../widgets/quick_action_button.dart';
+
+// Modales separados (Nivel 4)
+import '../widgets/modals/add_menu_bottom_sheet.dart';
+import '../widgets/modals/ai_feedback_dialog.dart';
+import '../widgets/modals/ai_result_bottom_sheet.dart';
+import '../widgets/modals/loading_ai_dialog.dart';
+import '../widgets/modals/photo_confirmation_dialog.dart';
 
 class Dashboard extends StatefulWidget {
   final Function(int)? onTabSelected;
@@ -31,6 +35,7 @@ class DashboardState extends State<Dashboard>
 
   Map<String, dynamic>? userData;
   bool _loading = true;
+  int _intentosVision = 3;
   bool perfilIncompleto = false;
 
   // Variables de Progreso
@@ -58,51 +63,123 @@ class DashboardState extends State<Dashboard>
     fetchInitialData(); // ¡Guión bajo quitado!
   }
 
-  // 1. FUNCIÓN PRINCIPAL QUE DISPARA LA CÁMARA Y LA IA
-  Future<void> _analyzeFood() async {
+  // 1. FASE LOCAL: Abrir cámara y pedir confirmación visual (¡GRATIS!)
+  Future<void> _analyzeFood({bool esReintento = false}) async {
+    if (!esReintento) {
+      _intentosVision = 3;
+    }
+
     final picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.camera);
     if (image == null) return;
 
-    // AHORA LLAMAMOS AL ARCHIVO EXTERNO
-    DashboardModals.showLoadingDialog(context);
+    final imageBytes = await image.readAsBytes();
+    if (!mounted) return;
+
+    final bool? confirmado = await PhotoConfirmationDialog.show(
+      context,
+      imageBytes,
+    );
+
+    if (confirmado == true) {
+      _sendPhotoToBackend(image, esReintento);
+    } else if (confirmado == false) {
+      _analyzeFood(esReintento: esReintento);
+    }
+  }
+
+  // 2. FASE SERVIDOR: Envío de foto a la IA
+  Future<void> _sendPhotoToBackend(XFile image, bool esReintento) async {
+    LoadingAiDialog.show(context);
 
     try {
       final response = await ApiClient.postMultipart(
         '/ai/vision/analyze',
         image,
       );
-      if (mounted) Navigator.pop(context); // Cierra loader
+      if (mounted) LoadingAiDialog.hide(context);
+
+      final responseString = await response.stream.bytesToString();
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(await response.stream.bytesToString());
+        final data = jsonDecode(responseString);
 
         if (mounted) {
-          // AHORA LLAMAMOS AL ARCHIVO EXTERNO
-          DashboardModals.showResultModal(
+          final String? action = await AiResultBottomSheet.show(
             context: context,
             data: data,
-            onConfirm: () {
-              // Aquí llamaremos a la API para registrar el plato
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('¡Guardado!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
+            intentosRestantes: _intentosVision - 1,
+          );
+
+          if (action == 'confirm') {
+            await _guardarPlatoAnalizado(data);
+          } else if (action == 'retry' && _intentosVision > 1) {
+            _intentosVision--;
+            _analyzeFood(esReintento: true);
+          }
+        }
+      } else {
+        String mensajeError = "Error desconocido al analizar la imagen.";
+        try {
+          final errorData = jsonDecode(responseString);
+          if (errorData['detail'] != null) {
+            mensajeError = errorData['detail'];
+          }
+        } catch (_) {}
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ups: $mensajeError'),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 4),
+            ),
           );
         }
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context);
-      // ... manejo de error ...
+      if (mounted) LoadingAiDialog.hide(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Error al analizar el plato. ¿Es comida de verdad? 🤔',
+          SnackBar(
+            content: Text('Error de conexión: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
+  // FUNCIÓN PARA MANDAR EL JSON AL BACKEND
+  Future<void> _guardarPlatoAnalizado(Map<String, dynamic> data) async {
+    try {
+      // ⚠️ IMPORTANTE: Aquí debes poner la ruta de tu backend que guarda comidas confirmadas.
+      // He puesto '/db/intakes' como ejemplo. Ajusta la URL según tu API.
+      final response = await ApiClient.post(
+        '/db/intakes', // O '/ai/intakes/vision/save', etc.
+        body: data,
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Si se guardó con éxito, recargamos la pantalla para actualizar la barrita de progreso
+        fetchInitialData();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('¡Comida guardada con éxito! 🚀'),
+              backgroundColor: Colors.green,
             ),
+          );
+        }
+      } else {
+        throw Exception("Error del servidor");
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudo guardar la comida: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -223,11 +300,8 @@ class DashboardState extends State<Dashboard>
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          // 1. Esperamos a que el usuario elija y el menú se cierre del todo
-          final result = await DashboardModals.showAddMenu(context);
+          final result = await AddMenuBottomSheet.show(context);
 
-          // 🛡️ ESCUDO 1: Si cerramos el modal tocando fuera (result == null)
-          // o si la pantalla ya no existe (!mounted), abortamos para no crashear.
           if (!mounted || result == null) return;
 
           if (result == 'scanner') {
@@ -235,8 +309,7 @@ class DashboardState extends State<Dashboard>
           } else if (result == 'manual') {
             showModalBottomSheet(
               context: context,
-              isScrollControlled:
-                  true, // Esto es vital para que pueda subir con el teclado
+              isScrollControlled: true,
               backgroundColor: Colors.transparent,
               builder: (context) => Padding(
                 padding: EdgeInsets.only(
@@ -244,15 +317,9 @@ class DashboardState extends State<Dashboard>
                 ),
                 child: FreeIntakeSheet(
                   onSuccess: (iaData) {
-                    // 👇 ¡Magia restaurada! Usamos el popup de feedback
-                    DashboardModals.showAIFeedbackDialog(
-                      context: context,
-                      iaData: iaData,
-                      onOk: () {
-                        // Cuando el usuario le da a "Genial", refrescamos la gráfica
-                        fetchInitialData();
-                      },
-                    );
+                    AiFeedbackDialog.show(context, iaData).then((_) {
+                      fetchInitialData();
+                    });
                   },
                 ),
               ),
