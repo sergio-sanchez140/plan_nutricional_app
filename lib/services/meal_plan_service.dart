@@ -67,46 +67,49 @@ class MealPlanService {
   }
 
   Future<Map<String, List<Meal>>> generateDailyMenu() async {
-    final response = await ApiClient.post(
-      '/ai/menus/generate', // o /db/ai/menus/generate según tu backend
-      body: {'tipo': 'diario'},
-    );
-
-    dynamic data;
-
     try {
-      data = jsonDecode(response.body);
-    } catch (_) {
-      throw Exception('Respuesta inválida del servidor');
-    }
+      // Llamamos a tu endpoint
+      final response = await ApiClient.post(
+        '/ai/menus/generate',
+        body: {"tipo": "diario"},
+      );
 
-    if (response.statusCode != 200) {
-      final detail = data is Map ? data['detail'] : null;
+      // Aceptamos tanto 200 (OK) como 201 (Created)
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
 
-      if (detail is Map && detail['code'] == 'PROFILE_INCOMPLETE') {
-        throw ProfileIncompleteException(
-          message: detail['message'] ?? "Perfil incompleto",
-          missingFields: List<String>.from(detail['missing_fields'] ?? []),
-        );
+        // 1. Extraemos el bloque "menu" gigante
+        final menuMap = data['menu'] as Map<String, dynamic>?;
+        if (menuMap == null || menuMap.isEmpty) {
+          throw Exception("El menú devuelto está vacío.");
+        }
+
+        // 2. Extraemos el primer día (normalmente es "1")
+        final String primerDia = menuMap.keys.first;
+        final diaData = menuMap[primerDia] as Map<String, dynamic>;
+
+        // 3. Traducimos las comidas para que la pantalla las entienda
+        Map<String, List<Meal>> parsedMeals = {};
+
+        diaData.forEach((turno, listaComidas) {
+          if (listaComidas is List && listaComidas.isNotEmpty) {
+            parsedMeals[turno] = listaComidas.map((m) {
+              String imagenPorDefecto = "assets/images/foods/pollo-quinoa.png";
+
+              return Meal.fromJson(m, imagenPorDefecto);
+            }).toList();
+          }
+        });
+
+        return parsedMeals; // ¡Menú perfecto enviado a la UI!
+      } else {
+        // Si el código no es 200 ni 201, lanzamos error limpio, no un JSON gigante
+        throw Exception("Error del servidor: ${response.statusCode}");
       }
-
-      final msg = (detail is Map)
-          ? detail['message']
-          : (data is Map ? data['message'] : null);
-
-      throw Exception(msg ?? 'Error al generar menú');
+    } catch (e) {
+      // Lanzamos el error hacia arriba para que el SnackBar lo pinte bonito
+      throw Exception("No se pudo generar el menú: $e");
     }
-
-    final menu = (data['menu'] ?? {}) as Map<String, dynamic>;
-    final parsed = <String, List<Meal>>{};
-
-    menu.forEach((type, items) {
-      parsed[type] = (items as List)
-          .map((item) => Meal.fromJson(item, getRandomImage()))
-          .toList();
-    });
-
-    return parsed;
   }
 
   Future<Meal> replaceMeal(Meal meal) async {

@@ -2,8 +2,17 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
+import '../widgets/free_intake_sheet.dart';
+import 'package:plan_nutricional_app/widgets/macro_chip.dart';
+import 'package:plan_nutricional_app/widgets/quick_action_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_client.dart';
+import '../widgets/macro_row.dart';
+import 'package:image_picker/image_picker.dart';
+import '../widgets/calories_summary_card.dart';
+import '../widgets/meals_history_card.dart';
+import '../widgets/ai_recommendation_card.dart';
+import '../utils/dashboard_modals.dart';
 
 class Dashboard extends StatefulWidget {
   final Function(int)? onTabSelected;
@@ -47,6 +56,58 @@ class DashboardState extends State<Dashboard>
     _controller.forward();
 
     fetchInitialData(); // ¡Guión bajo quitado!
+  }
+
+  // 1. FUNCIÓN PRINCIPAL QUE DISPARA LA CÁMARA Y LA IA
+  Future<void> _analyzeFood() async {
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.camera);
+    if (image == null) return;
+
+    // AHORA LLAMAMOS AL ARCHIVO EXTERNO
+    DashboardModals.showLoadingDialog(context);
+
+    try {
+      final response = await ApiClient.postMultipart(
+        '/ai/vision/analyze',
+        image,
+      );
+      if (mounted) Navigator.pop(context); // Cierra loader
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(await response.stream.bytesToString());
+
+        if (mounted) {
+          // AHORA LLAMAMOS AL ARCHIVO EXTERNO
+          DashboardModals.showResultModal(
+            context: context,
+            data: data,
+            onConfirm: () {
+              // Aquí llamaremos a la API para registrar el plato
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('¡Guardado!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      // ... manejo de error ...
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Error al analizar el plato. ¿Es comida de verdad? 🤔',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // --- AQUÍ QUITAMOS EL GUIÓN BAJO PARA HACERLA PÚBLICA ---
@@ -160,6 +221,49 @@ class DashboardState extends State<Dashboard>
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          // 1. Esperamos a que el usuario elija y el menú se cierre del todo
+          final result = await DashboardModals.showAddMenu(context);
+
+          // 🛡️ ESCUDO 1: Si cerramos el modal tocando fuera (result == null)
+          // o si la pantalla ya no existe (!mounted), abortamos para no crashear.
+          if (!mounted || result == null) return;
+
+          if (result == 'scanner') {
+            _analyzeFood();
+          } else if (result == 'manual') {
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled:
+                  true, // Esto es vital para que pueda subir con el teclado
+              backgroundColor: Colors.transparent,
+              builder: (context) => Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: FreeIntakeSheet(
+                  onSuccess: (iaData) {
+                    // 👇 ¡Magia restaurada! Usamos el popup de feedback
+                    DashboardModals.showAIFeedbackDialog(
+                      context: context,
+                      iaData: iaData,
+                      onOk: () {
+                        // Cuando el usuario le da a "Genial", refrescamos la gráfica
+                        fetchInitialData();
+                      },
+                    );
+                  },
+                ),
+              ),
+            );
+          }
+        },
+        backgroundColor: Colors.green.shade600,
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: const Icon(Icons.add, color: Colors.white, size: 32),
+      ),
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -202,161 +306,20 @@ class DashboardState extends State<Dashboard>
                 ),
 
               // --- 1. RESUMEN DE CALORÍAS ---
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          CircularPercentIndicator(
-                            radius: 65.0,
-                            lineWidth: 12.0,
-                            percent: progresoCalorias,
-                            center: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  caloriasConsumidas.toInt().toString(),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 22,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                                Text(
-                                  "/ ${caloriasMeta.toInt()} kcal",
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            progressColor: Colors.green,
-                            backgroundColor: Colors.grey.shade200,
-                            animation: true,
-                            animateFromLastPercent: true,
-                            circularStrokeCap: CircularStrokeCap.round,
-                          ),
-                          const SizedBox(width: 24),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Progreso de Hoy",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                _MacroRow(
-                                  label: "Carbos",
-                                  value:
-                                      "${macrosConsumidos['carbohidratos_g']}g",
-                                  color: Colors.blue,
-                                ),
-                                const SizedBox(height: 4),
-                                _MacroRow(
-                                  label: "Proteínas",
-                                  value: "${macrosConsumidos['proteinas_g']}g",
-                                  color: Colors.red,
-                                ),
-                                const SizedBox(height: 4),
-                                _MacroRow(
-                                  label: "Grasas",
-                                  value: "${macrosConsumidos['grasas_g']}g",
-                                  color: Colors.orange,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+              CaloriesSummaryCard(
+                consumidas: caloriasConsumidas,
+                meta: caloriasMeta,
+                macros: macrosConsumidos,
               ),
               const SizedBox(height: 20),
 
-              // --- 2. HISTORIAL DE COMIDAS (Nuevo) ---
-              if (historialConsumo.isNotEmpty) ...[
-                const Text(
-                  "Comidas de hoy",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  elevation: 2,
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics:
-                        const NeverScrollableScrollPhysics(), // Evita conflicto con el scroll general
-                    itemCount: historialConsumo.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1, indent: 60, endIndent: 20),
-                    itemBuilder: (context, index) {
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.green.shade50,
-                          child: Icon(
-                            Icons.check_circle,
-                            color: Colors.green.shade600,
-                            size: 22,
-                          ),
-                        ),
-                        title: Text(
-                          historialConsumo[index],
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
+              // --- 2. HISTORIAL DE COMIDAS ---
+              if (historialConsumo.isNotEmpty)
+                MealsHistoryCard(historial: historialConsumo),
+              const SizedBox(height: 20),
 
               // --- 3. RECOMENDACIÓN IA ---
-              SlideTransition(
-                position: _slideAnimation,
-                child: Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  color: Colors.green[50],
-                  elevation: 4,
-                  child: const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        Icon(Icons.lightbulb_outline, color: Colors.green),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            "Mantén un buen ritmo. Trata de cenar al menos 2 horas antes de ir a dormir 🌙",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              AIRecommendationCard(animation: _slideAnimation),
               const SizedBox(height: 24),
 
               const Text(
@@ -367,9 +330,25 @@ class DashboardState extends State<Dashboard>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _quickActionButton(Icons.restaurant_menu, "Plan", 1),
-                  _quickActionButton(Icons.emoji_events, "Retos", 2),
-                  _quickActionButton(Icons.person, "Perfil", 3),
+                  QuickActionButton(
+                    icon: Icons.restaurant_menu,
+                    label: "Plan",
+                    tabIndex: 1,
+                    onTabSelected:
+                        widget.onTabSelected, // Pasamos el cable aquí
+                  ),
+                  QuickActionButton(
+                    icon: Icons.emoji_events,
+                    label: "Retos",
+                    tabIndex: 2,
+                    onTabSelected: widget.onTabSelected, // Y aquí
+                  ),
+                  QuickActionButton(
+                    icon: Icons.person,
+                    label: "Perfil",
+                    tabIndex: 3,
+                    onTabSelected: widget.onTabSelected, // Y aquí
+                  ),
                 ],
               ),
               const SizedBox(height: 80),
@@ -377,59 +356,6 @@ class DashboardState extends State<Dashboard>
           ),
         ),
       ),
-    );
-  }
-
-  Widget _quickActionButton(IconData icon, String label, int tabIndex) {
-    return GestureDetector(
-      onTap: () {
-        if (widget.onTabSelected != null) {
-          widget.onTabSelected!(tabIndex);
-        }
-      },
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: Colors.green[100],
-            child: Icon(icon, color: Colors.green[700]),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MacroRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-
-  const _MacroRow({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(Icons.circle, size: 10, color: color),
-        const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-        const Spacer(),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-        ),
-      ],
     );
   }
 }
