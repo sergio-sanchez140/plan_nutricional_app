@@ -1,21 +1,15 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:plan_nutricional_app/main.dart';
-import 'package:plan_nutricional_app/screens/login.dart';
-import 'package:plan_nutricional_app/screens/profile_setup_wizard.dart';
-import 'package:plan_nutricional_app/screens/register.dart';
-import '../services/api_client.dart';
+import '../services/dashboard_service.dart'; // 🚀 Importamos nuestro servicio unificado
 
 class FreeIntakeSheet extends StatefulWidget {
   final Function(Map<String, dynamic> analysis) onSuccess;
   const FreeIntakeSheet({super.key, required this.onSuccess});
 
   @override
-  FreeIntakeSheetState createState() => FreeIntakeSheetState(); // Quitamos el guión bajo
+  FreeIntakeSheetState createState() => FreeIntakeSheetState();
 }
 
 class FreeIntakeSheetState extends State<FreeIntakeSheet> {
-  // Quitamos el guión bajo
   final TextEditingController _textCtrl = TextEditingController();
   bool _isProcessing = false;
   String _errorMsg = '';
@@ -30,27 +24,16 @@ class FreeIntakeSheetState extends State<FreeIntakeSheet> {
     });
 
     try {
-      final response = await ApiClient.post(
-        '/ai/intakes',
-        body: {"texto_ingesta": text},
-      );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        if (data['ok'] == true && data['analisis_ia'] != null) {
-          if (mounted) Navigator.pop(context);
-          widget.onSuccess(data['analisis_ia']);
-        } else {
-          setState(
-            () => _errorMsg = "La IA no devolvió el análisis correctamente.",
-          );
-        }
-      } else {
-        setState(
-          () => _errorMsg = "Error en el servidor (${response.statusCode}).",
-        );
+      // 🚀 ¡Llamamos al NUEVO endpoint que solo analiza, NO guarda!
+      final data = await DashboardService.analyzeText(text);
+      
+      if (mounted) {
+        Navigator.pop(context); // 1. Cerramos el teclado y este modal
+        widget.onSuccess(data); // 2. Mandamos la data al Dashboard para que abra el modal de Catch-up
       }
     } catch (e) {
-      setState(() => _errorMsg = "Revisa tu conexión a internet.");
+      // Limpiamos el mensaje de error por si viene con la palabra "Exception:"
+      setState(() => _errorMsg = e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -61,7 +44,6 @@ class FreeIntakeSheetState extends State<FreeIntakeSheet> {
     // 🛡️ Calculamos la altura de la pantalla para ponerle un tope al modal
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // 🛡️ El FractionallySizedBox asegura que NUNCA intentará crecer hasta el infinito
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: screenHeight * 0.8, // Como mucho, el 80% de la pantalla
@@ -73,7 +55,6 @@ class FreeIntakeSheetState extends State<FreeIntakeSheet> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
         // 🛡️ Esto permite que si el teclado sube, la caja haga scroll por dentro
-        // sin romper la pantalla entera
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -124,7 +105,10 @@ class FreeIntakeSheetState extends State<FreeIntakeSheet> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: Colors.green.shade400, width: 2),
+                    borderSide: BorderSide(
+                      color: Colors.green.shade400,
+                      width: 2,
+                    ),
                   ),
                 ),
               ),

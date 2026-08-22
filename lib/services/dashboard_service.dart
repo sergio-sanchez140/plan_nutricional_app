@@ -62,11 +62,49 @@ class DashboardService {
     }
   }
 
-  // 4. GUARDAR COMIDA
-  static Future<void> saveIntake(Map<String, dynamic> data) async {
+  // 4. GUARDAR COMIDA (Con Resolución de Pendientes)
+  static Future<void> saveIntake(
+    Map<String, dynamic> originalData, {
+    List<Map<String, String>>? resolucionPendientes,
+  }) async {
+    final Map<String, dynamic> data = jsonDecode(jsonEncode(originalData));
+
+    // 🩹 Mapeo defensivo de macros
+    if (data['macros'] != null) {
+      final macros = data['macros'];
+      macros['proteinas_g'] = macros['proteinas'] ?? macros['proteinas_g'] ?? 0;
+      macros['carbohidratos_g'] = macros['carbohidratos'] ?? macros['carbohidratos_g'] ?? 0;
+      macros['grasas_g'] = macros['grasas'] ?? macros['grasas_g'] ?? 0;
+      data['macros'] = macros;
+    }
+
+    // 🚀 Inyectamos el array de resoluciones si existe
+    if (resolucionPendientes != null && resolucionPendientes.isNotEmpty) {
+      data['resolucion_pendientes'] = resolucionPendientes;
+    }
+
     final response = await ApiClient.post('/ai/intakes', body: data);
+
     if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception("Error del servidor al guardar");
+      throw Exception("Error del servidor al guardar la ingesta");
+    }
+  }
+
+  // 5. ANALIZAR TEXTO MANUAL (No guarda, solo analiza)
+  static Future<Map<String, dynamic>> analyzeText(String texto) async {
+    final response = await ApiClient.post('/ai/text/analyze', body: {'texto': texto});
+    
+    // Asumimos que ApiClient maneja el jsonEncode internamente, 
+    // si no, asegúrate de que el body se envíe como JSON.
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      try {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['detail'] ?? "Error al analizar el texto.");
+      } catch (_) {
+        throw Exception("Error de conexión con la IA.");
+      }
     }
   }
 }

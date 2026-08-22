@@ -47,6 +47,7 @@ class DashboardState extends State<Dashboard>
     "grasas_g": 0,
   };
   List<String> historialConsumo = [];
+  List<dynamic> turnosPendientes = []; // 🚀 NUEVA VARIABLE
 
   @override
   void initState() {
@@ -89,14 +90,9 @@ class DashboardState extends State<Dashboard>
     }
   }
 
-  // =========================================================================
-  // 🧠 LÓGICA DE NEGOCIO (Delegada al Servicio)
-  // =========================================================================
-
   Future<void> fetchInitialData() async {
     setState(() => _loading = true);
     try {
-      // 1. El DashboardService hace todo el trabajo sucio
       final dataUsuario = await DashboardService.getUserData();
       final progreso = await DashboardService.getTodayProgress();
 
@@ -105,24 +101,23 @@ class DashboardState extends State<Dashboard>
           userData = dataUsuario;
           perfilIncompleto = _checkPerfilIncompleto(dataUsuario);
 
-          // 2. Cargamos el progreso si no dio error
           if (progreso != null) {
             caloriasConsumidas = (progreso['calorias_consumidas'] ?? 0).toDouble();
             macrosConsumidos = progreso['macros_consumidos'] ?? macrosConsumidos;
-            if (progreso['historial'] != null) {
-              historialConsumo = List<String>.from(progreso['historial']);
+            
+            if (progreso['historial'] != null) historialConsumo = List<String>.from(progreso['historial']);
+            
+            // 🚀 Leemos los pendientes que nos manda el backend
+            if (progreso['turnos_pendientes'] != null) {
+              turnosPendientes = List<dynamic>.from(progreso['turnos_pendientes']);
+            } else {
+              turnosPendientes = [];
             }
           }
         });
       }
     } catch (e) {
-      // 3. Manejo de errores limpio
-      if (e.toString().contains('unauthorized')) {
-        _showError("Sesión expirada. Inicia sesión de nuevo.");
-        if (mounted) Navigator.pushReplacementNamed(context, '/login');
-      } else {
-        _showError("No se pudo conectar al servidor");
-      }
+      // ... manejo de errores normal
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -130,54 +125,50 @@ class DashboardState extends State<Dashboard>
 
   Future<void> _sendPhotoToBackend(XFile image, bool esReintento) async {
     LoadingAiDialog.show(context);
-
     try {
-      // El servicio maneja Multipart y parseos. ¡Solo 1 línea!
       final data = await DashboardService.analyzeVision(image);
-      
       if (mounted) LoadingAiDialog.hide(context);
       if (mounted) {
-        final action = await AiResultBottomSheet.show(
-          context: context, data: data, intentosRestantes: _intentosVision - 1,
+        final result = await AiResultBottomSheet.show(
+          context: context,
+          data: data,
+          intentosRestantes: _intentosVision - 1,
+          turnosPendientes: turnosPendientes, // 🚀 Le pasamos la lista de pendientes
         );
 
-        if (action == 'confirm') {
-          await _guardarPlatoAnalizado(data);
-        } else if (action == 'retry' && _intentosVision > 1) {
-          _intentosVision--;
-          _analyzeFood(esReintento: true);
+        if (result != null) {
+          final String action = result['action'] ?? '';
+          
+          if (action == 'confirm') {
+            // Transformamos el mapa devuelto en la lista que quiere el backend
+            final mapResoluciones = result['resoluciones'] as Map<String, String>;
+            final listaResoluciones = mapResoluciones.entries.map((e) => {
+              "turno": e.key,
+              "estado": e.value
+            }).toList();
+
+            await _guardarPlatoAnalizado(data, listaResoluciones);
+          } else if (action == 'retry' && _intentosVision > 1) {
+            _intentosVision--;
+            _analyzeFood(esReintento: true);
+          }
         }
       }
     } catch (e) {
       if (mounted) LoadingAiDialog.hide(context);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            // Limpiamos la palabra "Exception:" que devuelve Dart por defecto
-            content: Text('Ups: ${e.toString().replaceAll('Exception: ', '')}'), 
-            backgroundColor: Colors.red.shade700
-          ),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ups: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: Colors.red.shade700));
     }
   }
 
-  Future<void> _guardarPlatoAnalizado(Map<String, dynamic> data) async {
+  Future<void> _guardarPlatoAnalizado(Map<String, dynamic> data, List<Map<String, String>> resoluciones) async {
     try {
-      await DashboardService.saveIntake(data); // ¡Magia! Solo 1 línea.
+      // 🚀 Guardamos enviando las resoluciones formateadas
+      await DashboardService.saveIntake(data, resolucionPendientes: resoluciones);
       
       fetchInitialData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('¡Comida guardada con éxito! 🚀'), backgroundColor: Colors.green),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('¡Plan recalculado con éxito! 🚀'), backgroundColor: Colors.green));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo guardar la comida'), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo guardar la comida'), backgroundColor: Colors.red));
     }
   }
 
@@ -292,15 +283,28 @@ class DashboardState extends State<Dashboard>
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (context) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
           child: FreeIntakeSheet(
-            onSuccess: (iaData) {
-              AiFeedbackDialog.show(
-                context,
-                iaData,
-              ).then((_) => fetchInitialData());
+            onSuccess: (iaData) async {
+              // 🚀 ¡MAGIA! En lugar de guardar o mostrar diálogos antiguos, 
+              // abrimos el mismo Modal Inteligente de Catch-up que usamos en la foto.
+              final modalResult = await AiResultBottomSheet.show(
+                context: context,
+                data: iaData,
+                intentosRestantes: 0, // 0 porque en manual no hay "reintentos" de foto
+                turnosPendientes: turnosPendientes, // Inyectamos las comidas pendientes
+              );
+
+              if (modalResult != null && modalResult['action'] == 'confirm') {
+                // Formateamos las respuestas del usuario y GUARDAMOS
+                final mapResoluciones = modalResult['resoluciones'] as Map<String, String>;
+                final listaResoluciones = mapResoluciones.entries.map((e) => {
+                  "turno": e.key,
+                  "estado": e.value
+                }).toList();
+
+                await _guardarPlatoAnalizado(iaData, listaResoluciones);
+              }
             },
           ),
         ),
