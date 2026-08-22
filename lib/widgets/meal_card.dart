@@ -7,11 +7,11 @@ class MealCard extends StatelessWidget {
   final VoidCallback onToggleCompleted;
 
   const MealCard({
-    Key? key,
+    super.key,
     required this.meal,
     required this.onReplace,
     required this.onToggleCompleted,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,12 +25,27 @@ class MealCard extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                meal.image,
-                height: 100,
-                width: 100,
-                fit: BoxFit.cover,
-              ),
+              // 🚀 LÓGICA INTELIGENTE DE IMÁGENES
+              child: meal.image.startsWith('http')
+                  ? Image.network(
+                      meal.image,
+                      height: 100,
+                      width: 100,
+                      fit: BoxFit.cover,
+                      // Si el link se rompe, mostramos un icono en vez de crashear
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        height: 100,
+                        width: 100,
+                        color: Colors.grey.shade200,
+                        child: const Icon(Icons.fastfood, color: Colors.grey),
+                      ),
+                    )
+                  : Image.asset(
+                      meal.image,
+                      height: 100,
+                      width: 100,
+                      fit: BoxFit.cover,
+                    ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -40,14 +55,17 @@ class MealCard extends StatelessWidget {
                   Text(
                     meal.name,
                     style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 16),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   if (meal.cantidad.isNotEmpty)
                     Text("Cantidad: ${meal.cantidad}"),
                   const SizedBox(height: 6),
                   Text(
-                      "P: ${meal.protein}g  C: ${meal.carbs}g  F: ${meal.fat}g"),
+                    "P: ${meal.protein}g  C: ${meal.carbs}g  F: ${meal.fat}g",
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     "Calorías: ${meal.calorias}",

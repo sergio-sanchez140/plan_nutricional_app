@@ -23,7 +23,7 @@ class Meal {
     required this.image,
   });
 
-  factory Meal.fromJson(Map<String, dynamic> json, String image) {
+  factory Meal.fromJson(Map<String, dynamic> json, String defaultImage) {
     final macros = json['macros'] as Map<String, dynamic>? ?? {};
 
     return Meal(
@@ -36,7 +36,7 @@ class Meal {
       fat: (macros['grasas_g'] ?? 0).toDouble(),
       calorias: (json['calorias'] ?? 0).toDouble(),
       completed: json['completed'] ?? false,
-      image: image,
+      image: json['imagen_url'] ?? defaultImage,
     );
   }
 }
