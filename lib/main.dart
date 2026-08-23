@@ -11,9 +11,19 @@ import 'screens/onboarding.dart';
 import 'screens/login.dart';
 import 'screens/register_data.dart';
 import 'screens/register.dart';
+import 'package:provider/provider.dart';
+import 'package:plan_nutricional_app/providers/progress_provider.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    // 🚀 MultiProvider inyecta el cerebro central a toda la app
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ProgressProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {

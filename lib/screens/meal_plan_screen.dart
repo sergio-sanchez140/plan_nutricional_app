@@ -4,6 +4,8 @@ import '../services/meal_plan_service.dart';
 import '../widgets/meal_card.dart';
 import '../widgets/replacing_overlay.dart';
 import '../errors/profile_incomplete_exception.dart';
+import 'package:provider/provider.dart';
+import '../providers/progress_provider.dart';
 
 class MealPlanScreen extends StatefulWidget {
   final Function(int)? onTabSelected; // <--- AÑADIR ESTO
@@ -80,10 +82,10 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     }
   }
 
-  Future<void> _fetchMealPlan() async {
+  Future<void> _fetchMealPlan({bool isSilent = false}) async {
     print("🔥 FETCH MEAL PLAN START");
 
-    setState(() => _loading = true);
+    if (!isSilent) setState(() => _loading = true);
 
     try {
       print("➡️ llamando service");
@@ -92,21 +94,24 @@ class _MealPlanScreenState extends State<MealPlanScreen>
 
       print("✅ respuesta recibida: $fetched");
 
-      setState(() {
-        meals = fetched;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          meals = fetched;
+          _loading = false;
+        });
 
-      _setupAnimations();
+        // Solo animamos las tarjetas si NO es una recarga silenciosa
+        if (!isSilent) _setupAnimations();
+      }
     } catch (e, stack) {
       print("❌ ERROR FETCH MEAL PLAN: $e");
       print(stack);
 
-      setState(() => _loading = false);
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al cargar: $e')));
+      if (mounted) setState(() => _loading = false);
+      if (mounted && !isSilent)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al cargar: $e')));
     }
   }
 
@@ -177,11 +182,19 @@ class _MealPlanScreenState extends State<MealPlanScreen>
 
       setState(() {
         final index = meals[type]?.indexWhere((m) => m.id == meal.id);
-
         if (index != null && index != -1) {
           meals[type]![index] = updated;
         }
       });
+
+      // 🚀 ¡LA MAGIA DEL NIVEL 5!
+      // Le decimos al Cerebro Central que actualice los datos de progreso en segundo plano
+      if (mounted) {
+        Provider.of<ProgressProvider>(
+          context,
+          listen: false,
+        ).fetchProgress(silent: true);
+      }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -236,6 +249,19 @@ class _MealPlanScreenState extends State<MealPlanScreen>
   @override
   Widget build(BuildContext context) {
     int animationIndex = 0;
+
+    final provider = context.watch<ProgressProvider>();
+
+    if (provider.planNeedsRefresh) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _fetchMealPlan(isSilent: true); // Recarga invisible a la API
+          context.read<ProgressProvider>().setPlanNeedsRefresh(
+            false,
+          ); // Bajamos la bandera
+        }
+      });
+    }
 
     return Stack(
       children: [
