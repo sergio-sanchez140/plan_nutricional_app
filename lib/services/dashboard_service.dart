@@ -118,4 +118,15 @@ class DashboardService {
       throw Exception('Error al obtener el historial: ${response.statusCode}');
     }
   }
+
+  // 7. OBTENER DETALLE DE UN DÍA ESPECÍFICO (Modo Lectura)
+  static Future<Map<String, dynamic>> getDailyHistoryDetail(String date) async {
+    final response = await ApiClient.get('/ai/progress/history/$date');
+    
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Error al obtener el detalle del día: ${response.statusCode}');
+    }
+  }
 }

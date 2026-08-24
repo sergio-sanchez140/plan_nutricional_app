@@ -305,31 +305,19 @@ class DashboardState extends State<Dashboard>
               if (perfilIncompleto)
                 ProfileWarningCard(onTabSelected: widget.onTabSelected),
 
-              // En tu Dashboard, donde llamas a CaloriesSummaryCard:
-              GestureDetector(
-                onTap: () {
+              // 🚀 1. Llamada limpia a la tarjeta con su nueva propiedad
+              CaloriesSummaryCard(
+                consumidas: progressProvider.caloriasConsumidas,
+                meta: caloriasMeta,
+                macros: progressProvider.macrosConsumidos,
+                onTapHistory: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const HistoryScreen()),
                   );
                 },
-                child: CaloriesSummaryCard(
-                  consumidas: progressProvider.caloriasConsumidas,
-                  meta: caloriasMeta,
-                  macros: progressProvider.macrosConsumidos,
-                ),
               ),
-              const SizedBox(height: 8),
-              Center(
-                child: TextButton.icon(
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const HistoryScreen()));
-                  },
-                  icon: const Icon(Icons.calendar_month, size: 16, color: Colors.green),
-                  label: const Text("Ver mi historial de progreso", style: TextStyle(color: Colors.green)),
-                ),
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 20), // Y seguimos directamente con el historial o recomendaciones
 
               if (progressProvider.historialConsumo.isNotEmpty) ...[
                 MealsHistoryCard(historial: progressProvider.historialConsumo),

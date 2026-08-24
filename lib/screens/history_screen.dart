@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/progress_provider.dart';
+import '../widgets/history/history_widgets.dart'; // Importamos nuestros componentes limpios
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -9,42 +10,87 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late Animation<double> _scaleAnimation;
+
   @override
   void initState() {
     super.initState();
-    // Pedimos al cerebro que cargue el historial al abrir la pantalla
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProgressProvider>().fetchHistory();
     });
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
   }
 
-  // Traductor de estados a colores UX
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'perfect':
-        return Colors.green.shade500; // Lo clavó
-      case 'good':
-        return Colors.lightGreen.shade300; // Casi lo clava
-      case 'missed':
-        return Colors.orange.shade400; // Se pasó o no llegó
-      case 'empty':
-      default:
-        return Colors.grey.shade200; // No hizo nada
-    }
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  String _getInsightMessage(int streak, int perfectDays) {
+    if (streak >= 7)
+      return "¡Imparable! Tu cuerpo ya está notando los cambios. 🔥";
+    if (streak >= 3) return "¡Vas por un camino excelente! Mantén el ritmo. 🚀";
+    if (perfectDays >= 15)
+      return "Mes increíble. Estás dominando tus hábitos. ⭐";
+    if (perfectDays < 5)
+      return "Semana de ajustes. ¡Hoy es un buen día para volver al verde! 🌱";
+    return "Cada día es una nueva oportunidad. ¡A por todas! 💪";
+  }
+
+  void _shareProgress() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.camera_alt, color: Colors.white),
+            SizedBox(width: 12),
+            Text("Generando imagen para tus historias... 📸"),
+          ],
+        ),
+        backgroundColor: Colors.purple.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ProgressProvider>();
+    final insightText = _getInsightMessage(
+      provider.currentStreak,
+      provider.perfectDays,
+    );
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text("Mi Progreso", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Mi Progreso",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share_rounded, color: Colors.black87),
+            onPressed: _shareProgress,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: provider.isLoadingHistory
           ? const Center(child: CircularProgressIndicator(color: Colors.green))
@@ -53,127 +99,48 @@ class _HistoryScreenState extends State<HistoryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 🌟 WIDGET 1: Gamificación (Rachas)
+                  InsightCard(text: insightText),
+                  const SizedBox(height: 24),
+
                   Row(
                     children: [
                       Expanded(
-                        child: _buildStatCard(
-                          title: "Racha Actual",
-                          value: "${provider.currentStreak} días",
-                          icon: Icons.local_fire_department,
-                          color: Colors.orange,
+                        child: StreakCard(
+                          streak: provider.currentStreak,
+                          scaleAnimation: _scaleAnimation,
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: _buildStatCard(
+                        child: StatCard(
                           title: "Días Perfectos",
                           value: "${provider.perfectDays}",
                           icon: Icons.star_rounded,
-                          color: Colors.amber,
+                          iconColor: Colors.amber,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 32),
 
-                  // 🌟 WIDGET 2: El Mapa de Calor (Heatmap)
                   const Text(
                     "Últimos 30 días",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [BoxShadow(color: Colors.grey.shade200, blurRadius: 10, spreadRadius: 1)],
-                    ),
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      alignment: WrapAlignment.center,
-                      children: provider.heatMapData.map((dayData) {
-                        final color = _getStatusColor(dayData['status']);
-                        final dateParts = dayData['fecha'].toString().split('-');
-                        final dayNumber = dateParts.length == 3 ? dateParts[2] : "";
 
-                        return Tooltip(
-                          message: "${dayData['fecha']} - ${dayData['calorias']} kcal",
-                          child: Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: dayData['status'] == 'empty' ? Colors.grey.shade300 : Colors.transparent,
-                                width: 1,
-                              ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                dayNumber,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: dayData['status'] == 'empty' ? Colors.grey.shade500 : Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
+                  // 🌟 AHORA EL CALENDARIO ES INTERACTIVO
+                  HeatmapCalendar(heatMapData: provider.heatMapData),
                   const SizedBox(height: 24),
-                  
-                  // Leyenda UX
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildLegendItem(Colors.green.shade500, "Perfecto"),
-                      const SizedBox(width: 12),
-                      _buildLegendItem(Colors.lightGreen.shade300, "Bien"),
-                      const SizedBox(width: 12),
-                      _buildLegendItem(Colors.orange.shade400, "Desvío"),
-                    ],
-                  )
+
+                  const HeatmapLegend(),
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _buildStatCard({required String title, required String value, required IconData icon, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.grey.shade200, blurRadius: 10, spreadRadius: 1)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 12),
-          Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(title, style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String label) {
-    return Row(
-      children: [
-        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-      ],
     );
   }
 }
