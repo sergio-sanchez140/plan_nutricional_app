@@ -51,4 +51,29 @@ class ProgressProvider extends ChangeNotifier {
     planNeedsRefresh = value;
     notifyListeners();
   }
+
+  // Añade estas variables dentro de la clase ProgressProvider:
+  bool isLoadingHistory = false;
+  int currentStreak = 0;
+  int perfectDays = 0;
+  List<dynamic> heatMapData = [];
+
+  Future<void> fetchHistory() async {
+    isLoadingHistory = true;
+    notifyListeners();
+
+    try {
+      // 🚀 AHORA SÍ: Usamos la capa de Servicios correctamente
+      final data = await DashboardService.getHistoryLast30Days();
+
+      currentStreak = data['racha_actual'] ?? 0;
+      perfectDays = data['dias_perfectos'] ?? 0;
+      heatMapData = data['historial'] ?? [];
+    } catch (e) {
+      debugPrint("Error fetching history: $e");
+    } finally {
+      isLoadingHistory = false;
+      notifyListeners();
+    }
+  }
 }

@@ -1,6 +1,7 @@
 // Archivo: lib/screens/dashboard.dart
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:plan_nutricional_app/screens/history_screen.dart';
 import 'package:provider/provider.dart';
 
 import '../services/dashboard_service.dart';
@@ -304,10 +305,29 @@ class DashboardState extends State<Dashboard>
               if (perfilIncompleto)
                 ProfileWarningCard(onTabSelected: widget.onTabSelected),
 
-              CaloriesSummaryCard(
-                consumidas: progressProvider.caloriasConsumidas,
-                meta: caloriasMeta,
-                macros: progressProvider.macrosConsumidos,
+              // En tu Dashboard, donde llamas a CaloriesSummaryCard:
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HistoryScreen()),
+                  );
+                },
+                child: CaloriesSummaryCard(
+                  consumidas: progressProvider.caloriasConsumidas,
+                  meta: caloriasMeta,
+                  macros: progressProvider.macrosConsumidos,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const HistoryScreen()));
+                  },
+                  icon: const Icon(Icons.calendar_month, size: 16, color: Colors.green),
+                  label: const Text("Ver mi historial de progreso", style: TextStyle(color: Colors.green)),
+                ),
               ),
               const SizedBox(height: 20),
 

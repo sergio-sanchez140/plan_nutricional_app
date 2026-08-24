@@ -107,4 +107,15 @@ class DashboardService {
       }
     }
   }
+
+  // 6. OBTENER HISTORIAL DE CONSTANCIA (30 DÍAS)
+  static Future<Map<String, dynamic>> getHistoryLast30Days() async {
+    final response = await ApiClient.get('/ai/progress/history/last-30-days');
+    
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Error al obtener el historial: ${response.statusCode}');
+    }
+  }
 }
