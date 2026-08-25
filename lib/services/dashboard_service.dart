@@ -73,7 +73,8 @@ class DashboardService {
     if (data['macros'] != null) {
       final macros = data['macros'];
       macros['proteinas_g'] = macros['proteinas'] ?? macros['proteinas_g'] ?? 0;
-      macros['carbohidratos_g'] = macros['carbohidratos'] ?? macros['carbohidratos_g'] ?? 0;
+      macros['carbohidratos_g'] =
+          macros['carbohidratos'] ?? macros['carbohidratos_g'] ?? 0;
       macros['grasas_g'] = macros['grasas'] ?? macros['grasas_g'] ?? 0;
       data['macros'] = macros;
     }
@@ -92,9 +93,12 @@ class DashboardService {
 
   // 5. ANALIZAR TEXTO MANUAL (No guarda, solo analiza)
   static Future<Map<String, dynamic>> analyzeText(String texto) async {
-    final response = await ApiClient.post('/ai/text/analyze', body: {'texto': texto});
-    
-    // Asumimos que ApiClient maneja el jsonEncode internamente, 
+    final response = await ApiClient.post(
+      '/ai/text/analyze',
+      body: {'texto': texto},
+    );
+
+    // Asumimos que ApiClient maneja el jsonEncode internamente,
     // si no, asegúrate de que el body se envíe como JSON.
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -111,7 +115,7 @@ class DashboardService {
   // 6. OBTENER HISTORIAL DE CONSTANCIA (30 DÍAS)
   static Future<Map<String, dynamic>> getHistoryLast30Days() async {
     final response = await ApiClient.get('/ai/progress/history/last-30-days');
-    
+
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
@@ -122,11 +126,34 @@ class DashboardService {
   // 7. OBTENER DETALLE DE UN DÍA ESPECÍFICO (Modo Lectura)
   static Future<Map<String, dynamic>> getDailyHistoryDetail(String date) async {
     final response = await ApiClient.get('/ai/progress/history/$date');
-    
+
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Error al obtener el detalle del día: ${response.statusCode}');
+      throw Exception(
+        'Error al obtener el detalle del día: ${response.statusCode}',
+      );
+    }
+  }
+
+  // 8. ACTUALIZAR PERFIL DEL USUARIO
+  static Future<void> updateUserData(Map<String, dynamic> data) async {
+    // 1. Extraemos el email de los datos que nos pasa la UI
+    final email = data['email'];
+
+    if (email == null || email.isEmpty) {
+      throw Exception('Error: Falta el email para actualizar el usuario');
+    }
+
+    // 2. 🚀 AHORA SÍ: Construimos la ruta dinámica correcta
+    final response = await ApiClient.put('/db/users/$email', body: data);
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      // Actualizamos la caché local para que la app sea súper rápida
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_data', response.body);
+    } else {
+      throw Exception('Error al actualizar el perfil: ${response.statusCode}');
     }
   }
 }
