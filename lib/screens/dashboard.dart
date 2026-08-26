@@ -268,8 +268,8 @@ class DashboardState extends State<Dashboard>
     // 🚀 NOS SUSCRIBIMOS AL CEREBRO CENTRAL
     final progressProvider = context.watch<ProgressProvider>();
     final nombre = userData?['nombre'] ?? "Usuario";
-    final double caloriasMeta = (userData?['calorias_objetivo'] ?? 2000)
-        .toDouble();
+    // 🌟 AHORA SÍ: Leemos la meta congelada del día desde el Provider
+    final double caloriasMeta = progressProvider.caloriasObjetivoHoy;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -313,11 +313,15 @@ class DashboardState extends State<Dashboard>
                 onTapHistory: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const HistoryScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const HistoryScreen(),
+                    ),
                   );
                 },
               ),
-              const SizedBox(height: 20), // Y seguimos directamente con el historial o recomendaciones
+              const SizedBox(
+                height: 20,
+              ), // Y seguimos directamente con el historial o recomendaciones
 
               if (progressProvider.historialConsumo.isNotEmpty) ...[
                 MealsHistoryCard(historial: progressProvider.historialConsumo),

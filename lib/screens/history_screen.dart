@@ -123,6 +123,13 @@ class _HistoryScreenState extends State<HistoryScreen>
                   ),
                   const SizedBox(height: 32),
 
+                  // 🌟 AÑADIMOS LA GRÁFICA DE PESO CON EL NUEVO PARÁMETRO
+                  WeightChartCard(
+                    weightData: provider.weightHistory,
+                    weightSummary: provider.weightSummary, // Pasamos el resumen
+                  ),
+                  const SizedBox(height: 32),
+
                   const Text(
                     "Últimos 30 días",
                     style: TextStyle(

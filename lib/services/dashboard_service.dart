@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
+import 'package:flutter/foundation.dart'; // Añade esto para debugPrint
 
 class DashboardService {
   // 1. OBTENER DATOS DEL USUARIO
@@ -154,6 +155,39 @@ class DashboardService {
       await prefs.setString('user_data', response.body);
     } else {
       throw Exception('Error al actualizar el perfil: ${response.statusCode}');
+    }
+  }
+
+  // 9. OBTENER HISTORIAL DE PESO
+  static Future<Map<String, dynamic>> getWeightHistory() async {
+    // 🌟 Cambiamos a Map
+    try {
+      final response = await ApiClient.get(
+        '/ai/progress/weight',
+      ); // Pon tu ruta real aquí
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body); // Devuelve el objeto completo
+      }
+      return {};
+    } catch (e) {
+      debugPrint("Error obteniendo historial de peso: $e");
+      return {};
+    }
+  }
+
+  // 10. REGISTRAR PESO DIARIO
+  static Future<bool> logDailyWeight(double weight, {String? date}) async {
+    try {
+      final payload = <String, dynamic>{"peso": weight};
+      if (date != null) payload["fecha"] = date;
+
+      // Usamos POST como indica tu API
+      final response = await ApiClient.post('/ai/progress/weight', body: payload);
+      
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint("Error registrando peso: $e");
+      return false;
     }
   }
 }

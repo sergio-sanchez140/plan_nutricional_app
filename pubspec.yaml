@@ -47,6 +47,7 @@ dependencies:
   google_sign_in_web: ^0.12.3
   image_picker: ^1.2.2
   provider: ^6.1.5+1
+  fl_chart: ^1.2.0
 
 dev_dependencies:
   flutter_test:
