@@ -1,5 +1,6 @@
 // Archivo: lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:plan_nutricional_app/widgets/common/friendly_error_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:plan_nutricional_app/services/notification_service.dart';
@@ -17,6 +18,25 @@ import 'package:plan_nutricional_app/providers/progress_provider.dart';
 void main() async {
   // 🌟 CAMBIO 2: Esto es obligatorio si haces llamadas a código nativo (como las notificaciones) antes del runApp
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🛡️ ESCUDO ANTI PANTALLAS ROJAS DE FLUTTER
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    // Si estamos en desarrollo, imprimimos el error en consola para nosotros
+    debugPrint("🚨 Error capturado por escudo global: ${details.exception}");
+
+    return Scaffold(
+      body: FriendlyErrorState(
+        title: "¡Ups! Un pequeño tropiezo 🛠️",
+        message:
+            "Algo se ha enredado en nuestros cables internos. Estamos trabajando para solucionarlo.",
+        icon: Icons.engineering_rounded,
+        onRetry: () {
+          // Aquí no podemos hacer mucho más que invitar a reiniciar,
+          // pero evitamos que la app parezca un "hackeo".
+        },
+      ),
+    );
+  };
 
   // 🌟 CAMBIO 3: Arrancamos el motor y las zonas horarias
   await NotificationService().init();

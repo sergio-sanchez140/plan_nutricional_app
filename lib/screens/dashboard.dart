@@ -22,6 +22,8 @@ import '../widgets/modals/loading_ai_dialog.dart';
 import '../widgets/modals/photo_confirmation_dialog.dart';
 import '../widgets/modals/recalculating_dialog.dart';
 
+import '../widgets/common/friendly_error_state.dart';
+
 import '../utils/ai_meal_flow.dart';
 
 class Dashboard extends StatefulWidget {
@@ -37,6 +39,8 @@ class DashboardState extends State<Dashboard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
+
+  bool _hasError = false;
 
   Map<String, dynamic>? userData;
   bool _loading = true;
@@ -86,13 +90,7 @@ class DashboardState extends State<Dashboard>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Error al cargar datos"),
-            backgroundColor: Colors.red.shade700,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        setState(() => _hasError = true); // 💥 ¡Activamos el modo error!
       }
     } finally {
       if (mounted && !isSilent) setState(() => _loading = false);
@@ -161,10 +159,19 @@ class DashboardState extends State<Dashboard>
 
   @override
   Widget build(BuildContext context) {
-    // Pantalla de carga completa (Solo al abrir la app la primera vez)
     if (_loading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator(color: Colors.green)),
+      );
+    }
+
+    // 🛡️ SI HUBO UN ERROR DE RED, MOSTRAMOS LA IA TOMANDO CAFÉ
+    if (_hasError) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: FriendlyErrorState(
+          onRetry: () => _fetchInitialData(isSilent: false),
+        ),
       );
     }
 
