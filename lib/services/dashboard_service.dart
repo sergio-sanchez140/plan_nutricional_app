@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
+import 'package:plan_nutricional_app/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 import 'package:flutter/foundation.dart'; // Añade esto para debugPrint
@@ -182,12 +183,32 @@ class DashboardService {
       if (date != null) payload["fecha"] = date;
 
       // Usamos POST como indica tu API
-      final response = await ApiClient.post('/ai/progress/weight', body: payload);
-      
+      final response = await ApiClient.post(
+        '/ai/progress/weight',
+        body: payload,
+      );
+
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       debugPrint("Error registrando peso: $e");
       return false;
+    }
+  }
+
+  // 🌟 OBTENER Y PROGRAMAR NOTIFICACIONES
+  static Future<void> syncNotifications() async {
+    try {
+      final response = await ApiClient.get('/ai/notifications/schedule');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        final List<dynamic> notis = data['notificaciones_programables'] ?? [];
+
+        // Le pasamos el array a nuestro Motor Nativo
+        await NotificationService().scheduleFromBackend(notis);
+      }
+    } catch (e) {
+      debugPrint("Error sincronizando notificaciones: $e");
     }
   }
 }

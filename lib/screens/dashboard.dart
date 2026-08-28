@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:plan_nutricional_app/screens/history_screen.dart';
+import 'package:plan_nutricional_app/services/notification_service.dart';
 import 'package:provider/provider.dart';
 
 import '../services/dashboard_service.dart';
@@ -21,6 +22,8 @@ import '../widgets/modals/loading_ai_dialog.dart';
 import '../widgets/modals/photo_confirmation_dialog.dart';
 import '../widgets/modals/recalculating_dialog.dart';
 
+import '../utils/ai_meal_flow.dart';
+
 class Dashboard extends StatefulWidget {
   final Function(int)? onTabSelected;
 
@@ -37,7 +40,6 @@ class DashboardState extends State<Dashboard>
 
   Map<String, dynamic>? userData;
   bool _loading = true;
-  int _intentosVision = 3;
   bool perfilIncompleto = false;
 
   @override
@@ -73,6 +75,9 @@ class DashboardState extends State<Dashboard>
       // 2. Cargamos datos de usuario
       final dataUsuario = await DashboardService.getUserData();
 
+      // 🌟 3. SINCRONIZAMOS LAS ALARMAS DE IA EN SEGUNDO PLANO
+      DashboardService.syncNotifications();
+
       if (mounted) {
         setState(() {
           userData = dataUsuario;
@@ -80,110 +85,17 @@ class DashboardState extends State<Dashboard>
         });
       }
     } catch (e) {
-      _showMessage("Error al cargar datos", isError: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Error al cargar datos"),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
       if (mounted && !isSilent) setState(() => _loading = false);
-    }
-  }
-
-  // =========================================================================
-  // 📸 LÓGICA DE IA Y GUARDADO
-  // =========================================================================
-
-  Future<void> _analyzeFood({bool esReintento = false}) async {
-    if (!esReintento) _intentosVision = 3;
-
-    final picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.camera);
-    if (image == null) return;
-
-    final imageBytes = await image.readAsBytes();
-    if (!mounted) return;
-
-    final bool? confirmado = await PhotoConfirmationDialog.show(
-      context,
-      imageBytes,
-    );
-
-    if (confirmado == true) {
-      _sendPhotoToBackend(image, esReintento);
-    } else if (confirmado == false) {
-      _analyzeFood(esReintento: esReintento);
-    }
-  }
-
-  Future<void> _sendPhotoToBackend(XFile image, bool esReintento) async {
-    LoadingAiDialog.show(context);
-    try {
-      final data = await DashboardService.analyzeVision(image);
-      if (mounted) LoadingAiDialog.hide(context);
-
-      if (mounted) {
-        // 🚀 FIX: Leemos el provider con context.read() porque no estamos en el build()
-        final turnosPendientes = context
-            .read<ProgressProvider>()
-            .turnosPendientes;
-
-        final result = await AiResultBottomSheet.show(
-          context: context,
-          data: data,
-          intentosRestantes: _intentosVision - 1,
-          turnosPendientes: turnosPendientes, // Usamos la variable local
-        );
-
-        if (result != null) {
-          final String action = result['action'] ?? '';
-          if (action == 'confirm') {
-            await _guardarPlatoAnalizado(data, result['resoluciones']);
-          } else if (action == 'retry' && _intentosVision > 1) {
-            _intentosVision--;
-            _analyzeFood(esReintento: true);
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) LoadingAiDialog.hide(context);
-      _showMessage(
-        'Ups: ${e.toString().replaceAll('Exception: ', '')}',
-        isError: true,
-      );
-    }
-  }
-
-  Future<void> _guardarPlatoAnalizado(
-    Map<String, dynamic> data,
-    dynamic resolucionesMap,
-  ) async {
-    RecalculatingDialog.show(context);
-
-    try {
-      List<Map<String, String>> listaResoluciones = [];
-      if (resolucionesMap != null) {
-        final map = resolucionesMap as Map<String, String>;
-        listaResoluciones = map.entries
-            .map((e) => {"turno": e.key, "estado": e.value})
-            .toList();
-      }
-
-      await DashboardService.saveIntake(
-        data,
-        resolucionPendientes: listaResoluciones,
-      );
-
-      if (!mounted) return;
-
-      await context.read<ProgressProvider>().fetchProgress(silent: true);
-      context.read<ProgressProvider>().setPlanNeedsRefresh(true);
-
-      RecalculatingDialog.hide(context);
-
-      _showMessage('¡Plan recalculado con éxito! 🚀');
-    } catch (e) {
-      if (!mounted) return;
-
-      RecalculatingDialog.hide(context);
-
-      _showMessage('No se pudo guardar la comida', isError: true);
     }
   }
 
@@ -196,7 +108,8 @@ class DashboardState extends State<Dashboard>
     if (!mounted || result == null) return;
 
     if (result == 'scanner') {
-      _analyzeFood();
+      // 🚀 Llamada limpia a la nueva clase
+      await AiMealFlow.startCameraFlow(context);
     } else if (result == 'manual') {
       showModalBottomSheet(
         context: context,
@@ -210,7 +123,6 @@ class DashboardState extends State<Dashboard>
             onSuccess: (iaData) async {
               if (!mounted) return;
 
-              // 🚀 FIX: Leemos los pendientes desde el contexto
               final turnosPendientes = context
                   .read<ProgressProvider>()
                   .turnosPendientes;
@@ -224,7 +136,9 @@ class DashboardState extends State<Dashboard>
 
               if (modalResult != null && modalResult['action'] == 'confirm') {
                 if (!mounted) return;
-                await _guardarPlatoAnalizado(
+                // 🚀 Llamamos a la lógica pública de guardado desde el modo manual
+                await AiMealFlow.guardarPlatoAnalizado(
+                  context,
                   iaData,
                   modalResult['resoluciones'],
                 );
@@ -234,17 +148,6 @@ class DashboardState extends State<Dashboard>
         ),
       );
     }
-  }
-
-  void _showMessage(String msg, {bool isError = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: isError ? Colors.red.shade700 : Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   bool _checkPerfilIncompleto(Map<String, dynamic> data) {

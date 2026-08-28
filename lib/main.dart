@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:plan_nutricional_app/services/notification_service.dart';
 import 'package:plan_nutricional_app/screens/profile_setup_wizard.dart';
 import 'screens/dashboard.dart';
 import 'screens/meal_plan_screen.dart';
@@ -9,18 +10,21 @@ import 'screens/challenges.dart';
 import 'screens/profile_screen.dart';
 import 'screens/onboarding.dart';
 import 'screens/login.dart';
-import 'screens/register_data.dart';
 import 'screens/register.dart';
 import 'package:provider/provider.dart';
 import 'package:plan_nutricional_app/providers/progress_provider.dart';
 
-void main() {
+void main() async {
+  // 🌟 CAMBIO 2: Esto es obligatorio si haces llamadas a código nativo (como las notificaciones) antes del runApp
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 🌟 CAMBIO 3: Arrancamos el motor y las zonas horarias
+  await NotificationService().init();
+
   runApp(
     // 🚀 MultiProvider inyecta el cerebro central a toda la app
     MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ProgressProvider()),
-      ],
+      providers: [ChangeNotifierProvider(create: (_) => ProgressProvider())],
       child: const MyApp(),
     ),
   );
