@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import '../models/meal.dart';
-import '../services/meal_plan_service.dart';
-import '../widgets/meal_card.dart';
-import '../widgets/replacing_overlay.dart';
-import '../errors/profile_incomplete_exception.dart';
 import 'package:provider/provider.dart';
+
+import '../models/meal.dart';
+import '../providers/meal_plan_provider.dart';
 import '../providers/progress_provider.dart';
 
-class MealPlanScreen extends StatefulWidget {
-  final Function(int)? onTabSelected; // <--- AÑADIR ESTO
+import '../widgets/replacing_overlay.dart';
+import '../widgets/meals/meal_category_list.dart';
 
-  const MealPlanScreen({super.key, this.onTabSelected}); // <--- AÑADIR ESTO
+class MealPlanScreen extends StatefulWidget {
+  final Function(int)? onTabSelected;
+
+  const MealPlanScreen({super.key, this.onTabSelected});
 
   @override
   _MealPlanScreenState createState() => _MealPlanScreenState();
@@ -18,28 +19,16 @@ class MealPlanScreen extends StatefulWidget {
 
 class _MealPlanScreenState extends State<MealPlanScreen>
     with TickerProviderStateMixin {
-  bool _loading = true;
-  bool _replacingMeal = false;
-
-  Map<String, List<Meal>> meals = {};
-
-  final List<String> foodImages = [
-    "assets/images/foods/avena-frutos-rojos.png",
-    "assets/images/foods/pollo-quinoa.png",
-    "assets/images/foods/salmon-vegetables.png",
-    "assets/images/foods/yogurt-nueces.png",
-  ];
-
-  late MealPlanService _service;
-
   final List<AnimationController> _controllers = [];
   final List<Animation<Offset>> _animations = [];
 
   @override
   void initState() {
     super.initState();
-    _service = MealPlanService(foodImages);
-    _fetchMealPlan();
+    // Lanzamos la carga inicial en cuanto la pantalla termina de construirse
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchData();
+    });
   }
 
   @override
@@ -50,11 +39,67 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     super.dispose();
   }
 
-  void _setupAnimations() {
-    for (final c in _controllers) {
-      c.dispose();
-    }
+  // =========================================================================
+  // 🧩 CONTROLADORES DE INTERFAZ (Hablan con el Provider)
+  // =========================================================================
 
+  Future<void> _fetchData({bool isSilent = false}) async {
+    final provider = context.read<MealPlanProvider>();
+    await provider.fetchMealPlan(isSilent: isSilent);
+
+    if (provider.errorMessage != null && mounted && !isSilent) {
+      _showSnackBar(provider.errorMessage!);
+    } else if (mounted && !isSilent) {
+      _setupAnimations(provider.meals);
+    }
+  }
+
+  Future<void> _generateMenu() async {
+    final provider = context.read<MealPlanProvider>();
+    await provider.generateDailyMenu();
+
+    if (!mounted) return;
+
+    if (provider.profileError != null) {
+      _showProfileIncompleteError(
+        provider.profileError!.message,
+        provider.profileError!.missingFields,
+      );
+    } else if (provider.errorMessage != null) {
+      _showSnackBar(provider.errorMessage!);
+    } else {
+      _showSnackBar("Menú generado correctamente");
+      _setupAnimations(provider.meals);
+    }
+  }
+
+  Future<void> _handleReplace(String type, Meal meal) async {
+    final provider = context.read<MealPlanProvider>();
+    await provider.replaceMeal(type, meal);
+
+    if (provider.errorMessage != null && mounted) {
+      _showSnackBar(provider.errorMessage!);
+    }
+  }
+
+  Future<void> _handleToggleCompleted(String type, Meal meal) async {
+    final provider = context.read<MealPlanProvider>();
+    await provider.toggleMealCompleted(type, meal);
+
+    if (provider.errorMessage != null && mounted) {
+      _showSnackBar(provider.errorMessage!);
+    } else if (mounted) {
+      // Sincronizamos el cerebro central
+      context.read<ProgressProvider>().fetchProgress(silent: true);
+    }
+  }
+
+  // =========================================================================
+  // 🎬 ANIMACIONES
+  // =========================================================================
+
+  void _setupAnimations(Map<String, List<Meal>> meals) {
+    for (final c in _controllers) c.dispose();
     _controllers.clear();
     _animations.clear();
 
@@ -64,7 +109,6 @@ class _MealPlanScreenState extends State<MealPlanScreen>
           duration: const Duration(milliseconds: 800),
           vsync: this,
         );
-
         final animation = Tween<Offset>(
           begin: const Offset(-1.0, 0),
           end: Offset.zero,
@@ -82,191 +126,84 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     }
   }
 
-  Future<void> _fetchMealPlan({bool isSilent = false}) async {
-    print("🔥 FETCH MEAL PLAN START");
+  // =========================================================================
+  // 🎨 UI HELPERS
+  // =========================================================================
 
-    if (!isSilent) setState(() => _loading = true);
-
-    try {
-      print("➡️ llamando service");
-
-      final fetched = await _service.fetchMealPlan();
-
-      print("✅ respuesta recibida: $fetched");
-
-      if (mounted) {
-        setState(() {
-          meals = fetched;
-          _loading = false;
-        });
-
-        // Solo animamos las tarjetas si NO es una recarga silenciosa
-        if (!isSilent) _setupAnimations();
-      }
-    } catch (e, stack) {
-      print("❌ ERROR FETCH MEAL PLAN: $e");
-      print(stack);
-
-      if (mounted) setState(() => _loading = false);
-      if (mounted && !isSilent)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error al cargar: $e')));
-    }
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _generateDailyMenu() async {
-    setState(() {
-      _loading = true;
-      _replacingMeal = true;
-    });
-
-    try {
-      final generated = await _service.generateDailyMenu();
-
-      setState(() {
-        meals = generated;
-        _loading = false;
-        _replacingMeal = false;
-      });
-
-      _setupAnimations();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Menú generado correctamente")),
-      );
-    } on ProfileIncompleteException catch (e) {
-      setState(() {
-        _loading = false;
-        _replacingMeal = false;
-      });
-
-      _showProfileIncompleteError(e);
-    } catch (e) {
-      setState(() {
-        _loading = false;
-        _replacingMeal = false;
-      });
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
-
-  Future<void> _replaceMeal(String type, Meal meal) async {
-    setState(() => _replacingMeal = true);
-
-    try {
-      final newMeal = await _service.replaceMeal(meal);
-
-      setState(() {
-        final index = meals[type]?.indexWhere((m) => m.id == meal.id);
-
-        if (index != null && index != -1) {
-          meals[type]![index] = newMeal;
-        }
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al reemplazar: $e')));
-    } finally {
-      setState(() => _replacingMeal = false);
-    }
-  }
-
-  Future<void> _toggleMealCompleted(String type, Meal meal) async {
-    try {
-      final updated = await _service.toggleMealCompleted(meal);
-
-      setState(() {
-        final index = meals[type]?.indexWhere((m) => m.id == meal.id);
-        if (index != null && index != -1) {
-          meals[type]![index] = updated;
-        }
-      });
-
-      // 🚀 ¡LA MAGIA DEL NIVEL 5!
-      // Le decimos al Cerebro Central que actualice los datos de progreso en segundo plano
-      if (mounted) {
-        Provider.of<ProgressProvider>(
-          context,
-          listen: false,
-        ).fetchProgress(silent: true);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al actualizar: $e')));
-    }
-  }
-
-  void _showProfileIncompleteError(ProfileIncompleteException e) {
+  void _showProfileIncompleteError(String message, List<String> missingFields) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text("Perfil incompleto"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(e.message),
-              const SizedBox(height: 10),
-              const Text("Campos faltantes:"),
-              const SizedBox(height: 5),
-              ...e.missingFields.map((f) => Text("• $f")),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cerrar"),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              onPressed: () {
-                Navigator.pop(context); // 1. Cierra el popup
-
-                // 2. Viaja a la pestaña de Perfil (índice 3)
-                if (widget.onTabSelected != null) {
-                  widget.onTabSelected!(3);
-                }
-              },
-              child: const Text(
-                "Completar perfil",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
+      builder: (_) => AlertDialog(
+        title: const Text("Perfil incompleto"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 10),
+            const Text("Campos faltantes:"),
+            const SizedBox(height: 5),
+            ...missingFields.map((f) => Text("• $f")),
           ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cerrar"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            onPressed: () {
+              Navigator.pop(context);
+              if (widget.onTabSelected != null) widget.onTabSelected!(3);
+            },
+            child: const Text(
+              "Completar perfil",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
+  // =========================================================================
+  // 📱 METODO BUILD PRINCIPAL
+  // =========================================================================
+
   @override
   Widget build(BuildContext context) {
-    int animationIndex = 0;
+    final progressProvider = context.watch<ProgressProvider>();
+    final planProvider = context.watch<MealPlanProvider>();
 
-    final provider = context.watch<ProgressProvider>();
+    // Lógica Soft Landing
+    final double consumidas = progressProvider.caloriasConsumidas;
+    final double meta = progressProvider.caloriasObjetivoHoy;
+    final bool isCalorieLimitReached = meta > 0 && consumidas >= meta;
 
-    if (provider.planNeedsRefresh) {
+    // Sincronización entre providers
+    if (progressProvider.planNeedsRefresh) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _fetchMealPlan(isSilent: true); // Recarga invisible a la API
-          context.read<ProgressProvider>().setPlanNeedsRefresh(
-            false,
-          ); // Bajamos la bandera
+          _fetchData(isSilent: true);
+          context.read<ProgressProvider>().setPlanNeedsRefresh(false);
         }
       });
     }
+
+    int currentAnimationIndex = 0;
 
     return Stack(
       children: [
         Scaffold(
-          backgroundColor: Colors.grey[100],
+          backgroundColor: Colors.grey[50],
           appBar: AppBar(
             title: const Text(
               "Mi Plan – Diario",
@@ -280,68 +217,61 @@ class _MealPlanScreenState extends State<MealPlanScreen>
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.black),
-                onPressed: _fetchMealPlan,
+                onPressed: _fetchData,
               ),
             ],
           ),
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: _generateDailyMenu,
+            onPressed: _generateMenu,
             icon: const Icon(Icons.auto_awesome),
             label: const Text("Generar menú"),
             backgroundColor: Colors.green,
           ),
-          body: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : meals.isEmpty
-              ? const Center(child: Text("No hay menú disponible"))
+          body: planProvider.isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: Colors.green),
+                )
+              : planProvider.meals.isEmpty
+              ? _buildEmptyState()
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: meals.entries.map((entry) {
-                      final type = entry.key;
-                      final list = entry.value;
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            type[0].toUpperCase() + type.substring(1),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Column(
-                            children: list.map((meal) {
-                              Widget card = MealCard(
-                                meal: meal,
-                                onReplace: () => _replaceMeal(type, meal),
-                                onToggleCompleted: () =>
-                                    _toggleMealCompleted(type, meal),
-                              );
-
-                              if (animationIndex < _animations.length) {
-                                card = SlideTransition(
-                                  position: _animations[animationIndex],
-                                  child: card,
-                                );
-                                animationIndex++;
-                              }
-
-                              return card;
-                            }).toList(),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
+                    children: planProvider.meals.entries.map((entry) {
+                      final widgetList = MealCategoryList(
+                        categoryName: entry.key,
+                        meals: entry.value,
+                        isCalorieLimitReached: isCalorieLimitReached,
+                        onReplace: (meal) => _handleReplace(entry.key, meal),
+                        onToggleCompleted: (meal) =>
+                            _handleToggleCompleted(entry.key, meal),
+                        animations: _animations,
+                        startingAnimationIndex: currentAnimationIndex,
                       );
+                      currentAnimationIndex += entry.value.length;
+                      return widgetList;
                     }).toList(),
                   ),
                 ),
         ),
-        if (_replacingMeal) const ReplacingOverlay(),
+        if (planProvider.isReplacingMeal) const ReplacingOverlay(),
       ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.restaurant_menu, size: 64, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            "No hay menú disponible",
+            style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
     );
   }
 }

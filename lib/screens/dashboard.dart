@@ -1,29 +1,23 @@
 // Archivo: lib/screens/dashboard.dart
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:plan_nutricional_app/screens/history_screen.dart';
-import 'package:plan_nutricional_app/services/notification_service.dart';
 import 'package:provider/provider.dart';
 
 import '../services/dashboard_service.dart';
 import '../providers/progress_provider.dart';
+import '../screens/history_screen.dart';
 
+// Componentes del Dashboard
 import '../widgets/dashboard/profile_warning_card.dart';
 import '../widgets/dashboard/dashboard_quick_actions.dart';
 import '../widgets/ai_recommendation_card.dart';
 import '../widgets/calories_summary_card.dart';
-import '../widgets/free_intake_sheet.dart';
-import '../widgets/meals_history_card.dart';
-
-// Modales separados
-import '../widgets/modals/add_menu_bottom_sheet.dart';
-import '../widgets/modals/ai_result_bottom_sheet.dart';
-import '../widgets/modals/loading_ai_dialog.dart';
-import '../widgets/modals/photo_confirmation_dialog.dart';
-import '../widgets/modals/recalculating_dialog.dart';
-
+import '../widgets/meals_history_card.dart'; // <-- Nuestro nuevo súper-componente
 import '../widgets/common/friendly_error_state.dart';
 
+// Modales y Flujos
+import '../widgets/modals/add_menu_bottom_sheet.dart';
+import '../widgets/modals/ai_result_bottom_sheet.dart';
+import '../widgets/free_intake_sheet.dart';
 import '../utils/ai_meal_flow.dart';
 
 class Dashboard extends StatefulWidget {
@@ -41,7 +35,6 @@ class DashboardState extends State<Dashboard>
   late Animation<Offset> _slideAnimation;
 
   bool _hasError = false;
-
   Map<String, dynamic>? userData;
   bool _loading = true;
   bool perfilIncompleto = false;
@@ -59,7 +52,6 @@ class DashboardState extends State<Dashboard>
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
 
-    // Carga inicial completa (con pantalla de carga)
     _fetchInitialData();
   }
 
@@ -69,32 +61,36 @@ class DashboardState extends State<Dashboard>
     super.dispose();
   }
 
-  // 🚀 REFACTOR: Añadimos isSilent para no poner la pantalla en blanco al recargar
   Future<void> _fetchInitialData({bool isSilent = false}) async {
     if (!isSilent) setState(() => _loading = true);
 
     try {
-      // 1. Cargamos progreso al cerebro
       await context.read<ProgressProvider>().fetchProgress(silent: isSilent);
-      // 2. Cargamos datos de usuario
       final dataUsuario = await DashboardService.getUserData();
 
-      // 🌟 3. SINCRONIZAMOS LAS ALARMAS DE IA EN SEGUNDO PLANO
       DashboardService.syncNotifications();
 
       if (mounted) {
         setState(() {
           userData = dataUsuario;
           perfilIncompleto = _checkPerfilIncompleto(dataUsuario);
+          _hasError = false;
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _hasError = true); // 💥 ¡Activamos el modo error!
-      }
+      if (mounted) setState(() => _hasError = true);
     } finally {
       if (mounted && !isSilent) setState(() => _loading = false);
     }
+  }
+
+  bool _checkPerfilIncompleto(Map<String, dynamic> data) {
+    return data["edad"] == null ||
+        data["peso"] == null ||
+        data["altura"] == null ||
+        data["genero"] == null ||
+        data["nivel_actividad"] == null ||
+        data["objetivo"] == null;
   }
 
   // =========================================================================
@@ -106,7 +102,6 @@ class DashboardState extends State<Dashboard>
     if (!mounted || result == null) return;
 
     if (result == 'scanner') {
-      // 🚀 Llamada limpia a la nueva clase
       await AiMealFlow.startCameraFlow(context);
     } else if (result == 'manual') {
       showModalBottomSheet(
@@ -120,7 +115,6 @@ class DashboardState extends State<Dashboard>
           child: FreeIntakeSheet(
             onSuccess: (iaData) async {
               if (!mounted) return;
-
               final turnosPendientes = context
                   .read<ProgressProvider>()
                   .turnosPendientes;
@@ -134,7 +128,6 @@ class DashboardState extends State<Dashboard>
 
               if (modalResult != null && modalResult['action'] == 'confirm') {
                 if (!mounted) return;
-                // 🚀 Llamamos a la lógica pública de guardado desde el modo manual
                 await AiMealFlow.guardarPlatoAnalizado(
                   context,
                   iaData,
@@ -148,14 +141,9 @@ class DashboardState extends State<Dashboard>
     }
   }
 
-  bool _checkPerfilIncompleto(Map<String, dynamic> data) {
-    return data["edad"] == null ||
-        data["peso"] == null ||
-        data["altura"] == null ||
-        data["genero"] == null ||
-        data["nivel_actividad"] == null ||
-        data["objetivo"] == null;
-  }
+  // =========================================================================
+  // 📱 INTERFAZ PRINCIPAL
+  // =========================================================================
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +153,6 @@ class DashboardState extends State<Dashboard>
       );
     }
 
-    // 🛡️ SI HUBO UN ERROR DE RED, MOSTRAMOS LA IA TOMANDO CAFÉ
     if (_hasError) {
       return Scaffold(
         backgroundColor: Colors.transparent,
@@ -175,11 +162,16 @@ class DashboardState extends State<Dashboard>
       );
     }
 
-    // 🚀 NOS SUSCRIBIMOS AL CEREBRO CENTRAL
     final progressProvider = context.watch<ProgressProvider>();
     final nombre = userData?['nombre'] ?? "Usuario";
-    // 🌟 AHORA SÍ: Leemos la meta congelada del día desde el Provider
+
+    // Lógica UX de Calorías
     final double caloriasMeta = progressProvider.caloriasObjetivoHoy;
+    final bool isCalorieLimitReached =
+        caloriasMeta > 0 && progressProvider.caloriasConsumidas >= caloriasMeta;
+    final List<String> turnosPendientes = List<String>.from(
+      progressProvider.turnosPendientes,
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -203,7 +195,6 @@ class DashboardState extends State<Dashboard>
         child: const Icon(Icons.add, color: Colors.white, size: 32),
       ),
       body: RefreshIndicator(
-        // 🚀 REFACTOR: Recarga silenciosa al tirar para abajo. El icono de RefreshIndicator ya hace de loading
         onRefresh: () => _fetchInitialData(isSilent: true),
         color: Colors.green,
         child: SingleChildScrollView(
@@ -212,10 +203,11 @@ class DashboardState extends State<Dashboard>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 1. Avisos
               if (perfilIncompleto)
                 ProfileWarningCard(onTabSelected: widget.onTabSelected),
 
-              // 🚀 1. Llamada limpia a la tarjeta con su nueva propiedad
+              // 2. Resumen de Calorías
               CaloriesSummaryCard(
                 consumidas: progressProvider.caloriasConsumidas,
                 meta: caloriasMeta,
@@ -229,18 +221,27 @@ class DashboardState extends State<Dashboard>
                   );
                 },
               ),
-              const SizedBox(
-                height: 20,
-              ), // Y seguimos directamente con el historial o recomendaciones
+              const SizedBox(height: 24),
 
-              if (progressProvider.historialConsumo.isNotEmpty) ...[
-                MealsHistoryCard(historial: progressProvider.historialConsumo),
-                const SizedBox(height: 20),
+              // 🌟 3. EL TIMELINE UNIFICADO (Historial + Pendientes)
+              if (progressProvider.historialConsumo.isNotEmpty ||
+                  turnosPendientes.isNotEmpty) ...[
+                MealsHistoryCard(
+                  historial: List<String>.from(
+                    progressProvider.historialConsumo,
+                  ),
+                  turnosPendientes: turnosPendientes,
+                  isCalorieLimitReached: isCalorieLimitReached,
+                  onAddAction: _handleAddMenuAction,
+                ),
+                const SizedBox(height: 24),
               ],
 
+              // 4. Recomendaciones IA
               AIRecommendationCard(animation: _slideAnimation),
               const SizedBox(height: 24),
 
+              // 5. Acciones Rápidas
               DashboardQuickActions(onTabSelected: widget.onTabSelected),
               const SizedBox(height: 80),
             ],

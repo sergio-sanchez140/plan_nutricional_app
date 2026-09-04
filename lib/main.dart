@@ -1,5 +1,6 @@
 // Archivo: lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:plan_nutricional_app/providers/meal_plan_provider.dart';
 import 'package:plan_nutricional_app/widgets/common/friendly_error_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -44,7 +45,10 @@ void main() async {
   runApp(
     // 🚀 MultiProvider inyecta el cerebro central a toda la app
     MultiProvider(
-      providers: [ChangeNotifierProvider(create: (_) => ProgressProvider())],
+      providers: [
+        ChangeNotifierProvider(create: (_) => ProgressProvider()),
+        ChangeNotifierProvider(create: (_) => MealPlanProvider()),
+      ],
       child: const MyApp(),
     ),
   );

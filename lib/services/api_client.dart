@@ -5,10 +5,10 @@ import 'package:image_picker/image_picker.dart';
 
 class ApiClient {
   // 💻 Entorno Local (Desarrollo)
-  // static const String baseUrl = 'http://127.0.0.1:8000';
+  static const String baseUrl = 'http://127.0.0.1:8000';
 
   // 🌍 Entorno Producción / Demo (Render)
-  static const String baseUrl = 'https://plan-nutricional-api.onrender.com';
+  //static const String baseUrl = 'https://plan-nutricional-api.onrender.com';
   static Future<Map<String, String>> _headers() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('access_token');
