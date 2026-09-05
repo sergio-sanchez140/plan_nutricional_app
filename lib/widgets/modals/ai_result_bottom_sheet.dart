@@ -38,12 +38,47 @@ class AiResultBottomSheet extends StatefulWidget {
 class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
   final Map<String, String> _estadoPendientes = {};
 
+  // 🌟 HELPER: Filtro temporal. Solo devuelve los turnos cuya hora YA PASÓ.
+  List<dynamic> _getPastPendingMeals(List<dynamic> todasPendientes) {
+    final int hour = DateTime.now().hour;
+
+    return todasPendientes.where((turnoInfo) {
+      final t = turnoInfo.toString().toLowerCase().trim();
+
+      // El desayuno siempre es pasado si está pendiente
+      if (t.contains('desayuno') || t.contains('breakfast')) return true;
+
+      // El almuerzo/media mañana lo preguntamos si son más de las 11:00
+      if (t.contains('media mañana') ||
+          t.contains('mañana') ||
+          t.contains('almuerzo'))
+        return hour >= 11;
+
+      // La comida la preguntamos si son más de las 15:00
+      if (t.contains('comida') || t.contains('lunch')) return hour >= 15;
+
+      // La merienda la preguntamos si son más de las 18:00
+      if (t.contains('merienda') || t.contains('snack') || t.contains('tarde'))
+        return hour >= 18;
+
+      // La cena la preguntamos si son más de las 22:00
+      if (t.contains('cena') || t.contains('dinner')) return hour >= 22;
+
+      return true; // Por seguridad, si hay un nombre raro, lo mostramos
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final macros = widget.data['macros'] ?? {};
     final ingredientes = List<String>.from(widget.data['ingredientes'] ?? []);
+
+    // 🌟 APLICAMOS EL FILTRO DE RELOJ BIOLÓGICO
+    final turnosPasados = _getPastPendingMeals(widget.turnosPendientes);
+
+    // Ahora solo exigimos que resuelva las comidas que realmente ya pasaron
     final bool todosResueltos =
-        _estadoPendientes.length == widget.turnosPendientes.length;
+        _estadoPendientes.length == turnosPasados.length;
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -137,8 +172,8 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
           ],
 
           // 🌟 INLINE SMART CHECKLIST (Extraído para limpieza)
-          if (widget.turnosPendientes.isNotEmpty) _buildSmartChecklist(),
-
+          // 🌟 INLINE SMART CHECKLIST (Solo muestra lo pasado)
+          if (turnosPasados.isNotEmpty) _buildSmartChecklist(turnosPasados),
           // BOTÓN CONFIRMAR
           ElevatedButton(
             onPressed: todosResueltos
@@ -191,7 +226,8 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
   // 🧩 WIDGETS EXTRAÍDOS (Clean Code)
   // =========================================================================
 
-  Widget _buildSmartChecklist() {
+  // 🌟 EL FIX: Añadimos (List<dynamic> turnosPasados) aquí
+  Widget _buildSmartChecklist(List<dynamic> turnosPasados) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: Container(
@@ -226,9 +262,7 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
               style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
             ),
             const SizedBox(height: 12),
-            ...widget.turnosPendientes.map(
-              (turno) => _buildPendingMealRow(turno),
-            ),
+            ...turnosPasados.map((turno) => _buildPendingMealRow(turno)),
           ],
         ),
       ),

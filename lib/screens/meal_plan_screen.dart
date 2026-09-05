@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 import '../models/meal.dart';
 import '../providers/meal_plan_provider.dart';
 import '../providers/progress_provider.dart';
+import '../utils/meal_sorter.dart';
 
-import '../widgets/replacing_overlay.dart';
 import '../widgets/meals/meal_category_list.dart';
 import '../widgets/modals/loading_ai_dialog.dart';
+import '../widgets/modals/high_demand_alert.dart';
+import '../widgets/modals/profile_incomplete_alert.dart';
 
 class MealPlanScreen extends StatefulWidget {
   final Function(int)? onTabSelected;
@@ -15,7 +17,7 @@ class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({super.key, this.onTabSelected});
 
   @override
-  _MealPlanScreenState createState() => _MealPlanScreenState();
+  State<MealPlanScreen> createState() => _MealPlanScreenState();
 }
 
 class _MealPlanScreenState extends State<MealPlanScreen>
@@ -23,10 +25,16 @@ class _MealPlanScreenState extends State<MealPlanScreen>
   final List<AnimationController> _controllers = [];
   final List<Animation<Offset>> _animations = [];
 
+  late ProgressProvider _progressProvider;
+
   @override
   void initState() {
     super.initState();
-    // Lanzamos la carga inicial en cuanto la pantalla termina de construirse
+
+    // 🌟 ARQUITECTURA LIMPIA: Escuchamos eventos fuera del método build
+    _progressProvider = context.read<ProgressProvider>();
+    _progressProvider.addListener(_onProgressChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchData();
     });
@@ -34,15 +42,20 @@ class _MealPlanScreenState extends State<MealPlanScreen>
 
   @override
   void dispose() {
+    _progressProvider.removeListener(_onProgressChanged);
     for (final c in _controllers) {
       c.dispose();
     }
     super.dispose();
   }
 
-  // =========================================================================
-  // 🧩 CONTROLADORES DE INTERFAZ (Hablan con el Provider)
-  // =========================================================================
+  // 🌟 Listener seguro para recargas en segundo plano
+  void _onProgressChanged() {
+    if (_progressProvider.planNeedsRefresh && mounted) {
+      _fetchData(isSilent: true);
+      _progressProvider.setPlanNeedsRefresh(false);
+    }
+  }
 
   Future<void> _fetchData({bool isSilent = false}) async {
     final provider = context.read<MealPlanProvider>();
@@ -56,7 +69,6 @@ class _MealPlanScreenState extends State<MealPlanScreen>
   }
 
   Future<void> _generateMenu() async {
-    // 1. 🌟 Levantamos el modal elegante ANTES de llamar al servidor
     LoadingAiDialog.show(
       context,
       title: "Creando tu menú ideal",
@@ -69,20 +81,20 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     );
 
     final provider = context.read<MealPlanProvider>();
-    await provider
-        .generateDailyMenu(); // La app espera aquí mientras los textos giran
+    await provider.generateDailyMenu();
 
     if (!mounted) return;
-
-    // 2. 🌟 Cerramos el modal en cuanto la IA nos devuelve el menú
     LoadingAiDialog.hide(context);
 
-    // 3. Manejamos los resultados y pintamos la interfaz
     if (provider.profileError != null) {
-      _showProfileIncompleteError(
-        provider.profileError!.message,
-        provider.profileError!.missingFields,
+      ProfileIncompleteAlert.show(
+        context: context,
+        message: provider.profileError!.message,
+        missingFields: provider.profileError!.missingFields,
+        onTabSelected: widget.onTabSelected,
       );
+    } else if (provider.meals.isEmpty) {
+      HighDemandAlert.show(context);
     } else if (provider.errorMessage != null) {
       _showSnackBar(provider.errorMessage!);
     } else {
@@ -92,10 +104,28 @@ class _MealPlanScreenState extends State<MealPlanScreen>
   }
 
   Future<void> _handleReplace(String type, Meal meal) async {
+    // 🌟 1. Levantamos el modal premium ANTES de llamar al servidor
+    LoadingAiDialog.show(
+      context,
+      title: "Buscando alternativas",
+      texts: [
+        "Buscando opciones similares...",
+        "Calculando equivalencias nutricionales...",
+        "Ajustando nuevas porciones...",
+        "¡Preparando la receta!",
+      ],
+    );
+
     final provider = context.read<MealPlanProvider>();
     await provider.replaceMeal(type, meal);
 
-    if (provider.errorMessage != null && mounted) {
+    if (!mounted) return;
+
+    // 🌟 2. Cerramos el modal en cuanto la IA nos devuelve el nuevo plato
+    LoadingAiDialog.hide(context);
+
+    // 3. Manejamos los errores si los hay
+    if (provider.errorMessage != null) {
       _showSnackBar(provider.errorMessage!);
     }
   }
@@ -103,18 +133,12 @@ class _MealPlanScreenState extends State<MealPlanScreen>
   Future<void> _handleToggleCompleted(String type, Meal meal) async {
     final provider = context.read<MealPlanProvider>();
     await provider.toggleMealCompleted(type, meal);
-
     if (provider.errorMessage != null && mounted) {
       _showSnackBar(provider.errorMessage!);
     } else if (mounted) {
-      // Sincronizamos el cerebro central
       context.read<ProgressProvider>().fetchProgress(silent: true);
     }
   }
-
-  // =========================================================================
-  // 🎬 ANIMACIONES
-  // =========================================================================
 
   void _setupAnimations(Map<String, List<Meal>> meals) {
     for (final c in _controllers) c.dispose();
@@ -131,7 +155,6 @@ class _MealPlanScreenState extends State<MealPlanScreen>
           begin: const Offset(-1.0, 0),
           end: Offset.zero,
         ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOut));
-
         _controllers.add(controller);
         _animations.add(animation);
       }
@@ -144,97 +167,28 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     }
   }
 
-  // =========================================================================
-  // 🎨 UI HELPERS
-  // =========================================================================
-
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _showProfileIncompleteError(String message, List<String> missingFields) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text("Perfil incompleto"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message),
-            const SizedBox(height: 10),
-            const Text("Campos faltantes:"),
-            const SizedBox(height: 5),
-            ...missingFields.map((f) => Text("• $f")),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cerrar"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            onPressed: () {
-              Navigator.pop(context);
-              if (widget.onTabSelected != null) widget.onTabSelected!(3);
-            },
-            child: const Text(
-              "Completar perfil",
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 🌟 HELPER BLINDADO: Orden cronológico estricto para el Menú
-  int _getCategoryOrder(String category) {
-    final t = category.toLowerCase().trim();
-    if (t.contains('desayuno') || t.contains('breakfast')) return 10;
-    if (t.contains('media mañana') || t.contains('mañana')) return 20;
-    if (t.contains('comida') || t.contains('almuerzo') || t.contains('lunch'))
-      return 30;
-    if (t.contains('merienda') || t.contains('snack') || t.contains('tarde'))
-      return 40;
-    if (t.contains('cena') || t.contains('dinner')) return 50;
-    return 60;
-  }
-
-  // =========================================================================
-  // 📱 METODO BUILD PRINCIPAL
-  // =========================================================================
-
   @override
   Widget build(BuildContext context) {
     final progressProvider = context.watch<ProgressProvider>();
     final planProvider = context.watch<MealPlanProvider>();
 
-    // Lógica Soft Landing
     final double consumidas = progressProvider.caloriasConsumidas;
     final double meta = progressProvider.caloriasObjetivoHoy;
     final bool isCalorieLimitReached = meta > 0 && consumidas >= meta;
 
-    // Sincronización entre providers
-    if (progressProvider.planNeedsRefresh) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _fetchData(isSilent: true);
-          context.read<ProgressProvider>().setPlanNeedsRefresh(false);
-        }
-      });
-    }
-
     int currentAnimationIndex = 0;
 
-    // 🌟 EL FIX: Ordenamos las categorías del menú de forma estricta ANTES de pintarlas
     final sortedMealEntries = planProvider.meals.entries.toList();
     sortedMealEntries.sort(
-      (a, b) => _getCategoryOrder(a.key).compareTo(_getCategoryOrder(b.key)),
+      (a, b) => MealSorter.getCategoryOrder(
+        a.key,
+      ).compareTo(MealSorter.getCategoryOrder(b.key)),
     );
 
     return Stack(
@@ -268,17 +222,14 @@ class _MealPlanScreenState extends State<MealPlanScreen>
               ? const Center(
                   child: CircularProgressIndicator(color: Colors.green),
                 )
-              : sortedMealEntries
-                    .isEmpty // 🚀 Usamos la lista ordenada aquí
+              : sortedMealEntries.isEmpty
               ? _buildEmptyState()
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
-                  // 🔥 Cuidado con el padding bottom para que no te pase el problema del último elemento cortado
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 80),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      // 🚀 Usamos la lista ORDENADA en lugar del mapa crudo
                       children: sortedMealEntries.map((entry) {
                         final widgetList = MealCategoryList(
                           categoryName: entry.key,
@@ -297,7 +248,6 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                   ),
                 ),
         ),
-        if (planProvider.isReplacingMeal) const ReplacingOverlay(),
       ],
     );
   }

@@ -13,12 +13,9 @@ import '../widgets/ai_recommendation_card.dart';
 import '../widgets/calories_summary_card.dart';
 import '../widgets/meals_history_card.dart'; // <-- Nuestro nuevo súper-componente
 import '../widgets/common/friendly_error_state.dart';
-
-// Modales y Flujos
 import '../widgets/modals/add_menu_bottom_sheet.dart';
-import '../widgets/modals/ai_result_bottom_sheet.dart';
-import '../widgets/free_intake_sheet.dart';
 import '../utils/ai_meal_flow.dart';
+import '../utils/meal_sorter.dart';
 
 class Dashboard extends StatefulWidget {
   final Function(int)? onTabSelected;
@@ -93,17 +90,6 @@ class DashboardState extends State<Dashboard>
         data["objetivo"] == null;
   }
 
-  // 🌟 HELPER: Orden cronológico estricto de las comidas
-  int _getOrdenTurno(String turno) {
-    final t = turno.toLowerCase();
-    if (t.contains('desayuno')) return 1;
-    if (t.contains('media mañana') || t.contains('almuerzo')) return 2;
-    if (t.contains('comida')) return 3;
-    if (t.contains('merienda')) return 4;
-    if (t.contains('cena')) return 5;
-    return 6; // Snacks o recenas van al final
-  }
-
   // =========================================================================
   // 🧩 MÉTODOS UI Y ACCIONES
   // =========================================================================
@@ -112,9 +98,9 @@ class DashboardState extends State<Dashboard>
     if (!mounted || result == null) return;
 
     if (result == 'scanner') {
-      await AiMealFlow.startCameraFlow(context);
+      // 🌟 LE PASAMOS isExtra: true
+      await AiMealFlow.startCameraFlow(context, isExtra: true);
     } else if (result == 'manual') {
-      // 🌟 REFACTOR: Delegamos toda la lógica al gestor de flujos de IA
       await AiMealFlow.startManualFlow(context);
     }
   }
@@ -143,19 +129,34 @@ class DashboardState extends State<Dashboard>
     final progressProvider = context.watch<ProgressProvider>();
     final nombre = userData?['nombre'] ?? "Usuario";
 
+    if (progressProvider.profileNeedsRefresh) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _fetchInitialData(isSilent: true);
+          context.read<ProgressProvider>().setProfileNeedsRefresh(false);
+        }
+      });
+    }
+
     // Lógica UX de Calorías
     final double caloriasMeta = progressProvider.caloriasObjetivoHoy;
     final bool isCalorieLimitReached =
         caloriasMeta > 0 && progressProvider.caloriasConsumidas >= caloriasMeta;
     // 🌟 1. Extraemos y ORDENAMOS los turnos pendientes cronológicamente
-    final List<String> turnosPendientes = List<String>.from(
-      progressProvider.turnosPendientes,
-    )..sort((a, b) => _getOrdenTurno(a).compareTo(_getOrdenTurno(b)));
+    final List<String> turnosPendientes =
+        List<String>.from(progressProvider.turnosPendientes)..sort(
+          (a, b) => MealSorter.getCategoryOrder(
+            a,
+          ).compareTo(MealSorter.getCategoryOrder(b)),
+        );
 
     // 🌟 2. Extraemos y ORDENAMOS el historial completado cronológicamente
-    final List<String> historialOrdenado = List<String>.from(
-      progressProvider.historialConsumo,
-    )..sort((a, b) => _getOrdenTurno(a).compareTo(_getOrdenTurno(b)));
+    final List<String> historialOrdenado =
+        List<String>.from(progressProvider.historialConsumo)..sort(
+          (a, b) => MealSorter.getCategoryOrder(
+            a,
+          ).compareTo(MealSorter.getCategoryOrder(b)),
+        );
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -170,12 +171,20 @@ class DashboardState extends State<Dashboard>
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _handleAddMenuAction,
-        backgroundColor: Colors.green.shade600,
+        backgroundColor: Colors.black87, // Un negro elegante estilo Apple
         elevation: 6,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: const Icon(Icons.add, color: Colors.white, size: 32),
+        icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 24),
+        label: const Text(
+          "Extra",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () => _fetchInitialData(isSilent: true),
@@ -210,11 +219,17 @@ class DashboardState extends State<Dashboard>
               if (progressProvider.historialConsumo.isNotEmpty ||
                   turnosPendientes.isNotEmpty) ...[
                 MealsHistoryCard(
-                  historial: historialOrdenado, // 🚀 Usamos la lista ordenada
-                  turnosPendientes:
-                      turnosPendientes, // 🚀 Ya viene ordenada arriba
+                  historial: historialOrdenado,
+                  turnosPendientes: turnosPendientes,
                   isCalorieLimitReached: isCalorieLimitReached,
-                  onAddAction: _handleAddMenuAction,
+                  // 🌟 LA MAGIA: Al tocar un turno pendiente, saltamos al Tab de Menú
+                  onPendingMealTap: (turno) {
+                    if (widget.onTabSelected != null) {
+                      widget.onTabSelected!(
+                        1,
+                      ); // 👈 Asumiendo que el index 1 es "Mi Plan"
+                    }
+                  },
                 ),
                 const SizedBox(height: 24),
               ],

@@ -8,6 +8,12 @@ import '../services/dashboard_service.dart';
 class ProgressProvider extends ChangeNotifier {
   bool isLoading = true;
   bool planNeedsRefresh = false;
+  bool profileNeedsRefresh = false;
+
+  void setProfileNeedsRefresh(bool value) {
+    profileNeedsRefresh = value;
+    notifyListeners();
+  }
 
   double caloriasConsumidas = 0.0;
   // 🌟 NUEVA VARIABLE: Guardará la meta inmutable de HOY

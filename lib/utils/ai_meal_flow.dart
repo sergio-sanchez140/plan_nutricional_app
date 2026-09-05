@@ -18,6 +18,7 @@ class AiMealFlow {
   static Future<void> startCameraFlow(
     BuildContext context, {
     int intentosRestantes = 3,
+    bool isExtra = false, // 🌟 NUEVO PARÁMETRO
   }) async {
     final picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.camera);
@@ -32,10 +33,18 @@ class AiMealFlow {
     );
 
     if (confirmado == true) {
-      await _sendPhotoToBackend(context, image, intentosRestantes);
+      await _sendPhotoToBackend(
+        context,
+        image,
+        intentosRestantes,
+        isExtra,
+      ); // 🌟 PASAMOS isExtra
     } else if (confirmado == false) {
-      // Reintento: volvemos a abrir la cámara
-      await startCameraFlow(context, intentosRestantes: intentosRestantes);
+      await startCameraFlow(
+        context,
+        intentosRestantes: intentosRestantes,
+        isExtra: isExtra,
+      );
     }
   }
 
@@ -56,10 +65,7 @@ class AiMealFlow {
           // 🛡️ Verificamos que el Dashboard siga vivo
           if (!mainContext.mounted) return;
 
-          // 🌟 USAMOS EL MAIN CONTEXT PARA TODO A PARTIR DE AHORA
-          final turnosPendientes = mainContext
-              .read<ProgressProvider>()
-              .turnosPendientes;
+          final turnosPendientes = [];
 
           final result = await AiResultBottomSheet.show(
             context: mainContext, // Usamos mainContext
@@ -87,6 +93,7 @@ class AiMealFlow {
     BuildContext context,
     XFile image,
     int intentos,
+    bool isExtra, // 🌟 NUEVO PARÁMETRO
   ) async {
     // 🌟 LLAMADA AL NUEVO LOADING (Textos de escáner)
     LoadingAiDialog.show(
@@ -106,9 +113,10 @@ class AiMealFlow {
 
       LoadingAiDialog.hide(context);
 
-      final turnosPendientes = context
-          .read<ProgressProvider>()
-          .turnosPendientes;
+      // 🌟 Si es Extra, mandamos lista vacía para no chocar con las planificadas.
+      final turnosPendientes = isExtra
+          ? []
+          : context.read<ProgressProvider>().turnosPendientes;
 
       final result = await AiResultBottomSheet.show(
         context: context,
