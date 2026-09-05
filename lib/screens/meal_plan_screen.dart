@@ -7,6 +7,7 @@ import '../providers/progress_provider.dart';
 
 import '../widgets/replacing_overlay.dart';
 import '../widgets/meals/meal_category_list.dart';
+import '../widgets/modals/loading_ai_dialog.dart';
 
 class MealPlanScreen extends StatefulWidget {
   final Function(int)? onTabSelected;
@@ -55,11 +56,28 @@ class _MealPlanScreenState extends State<MealPlanScreen>
   }
 
   Future<void> _generateMenu() async {
+    // 1. 🌟 Levantamos el modal elegante ANTES de llamar al servidor
+    LoadingAiDialog.show(
+      context,
+      title: "Creando tu menú ideal",
+      texts: [
+        "Analizando tu perfil y objetivos...",
+        "Calculando tus macros exactos...",
+        "Diseñando recetas deliciosas...",
+        "Ajustando las porciones...",
+      ],
+    );
+
     final provider = context.read<MealPlanProvider>();
-    await provider.generateDailyMenu();
+    await provider
+        .generateDailyMenu(); // La app espera aquí mientras los textos giran
 
     if (!mounted) return;
 
+    // 2. 🌟 Cerramos el modal en cuanto la IA nos devuelve el menú
+    LoadingAiDialog.hide(context);
+
+    // 3. Manejamos los resultados y pintamos la interfaz
     if (provider.profileError != null) {
       _showProfileIncompleteError(
         provider.profileError!.message,
@@ -174,6 +192,19 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     );
   }
 
+  // 🌟 HELPER BLINDADO: Orden cronológico estricto para el Menú
+  int _getCategoryOrder(String category) {
+    final t = category.toLowerCase().trim();
+    if (t.contains('desayuno') || t.contains('breakfast')) return 10;
+    if (t.contains('media mañana') || t.contains('mañana')) return 20;
+    if (t.contains('comida') || t.contains('almuerzo') || t.contains('lunch'))
+      return 30;
+    if (t.contains('merienda') || t.contains('snack') || t.contains('tarde'))
+      return 40;
+    if (t.contains('cena') || t.contains('dinner')) return 50;
+    return 60;
+  }
+
   // =========================================================================
   // 📱 METODO BUILD PRINCIPAL
   // =========================================================================
@@ -199,6 +230,12 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     }
 
     int currentAnimationIndex = 0;
+
+    // 🌟 EL FIX: Ordenamos las categorías del menú de forma estricta ANTES de pintarlas
+    final sortedMealEntries = planProvider.meals.entries.toList();
+    sortedMealEntries.sort(
+      (a, b) => _getCategoryOrder(a.key).compareTo(_getCategoryOrder(b.key)),
+    );
 
     return Stack(
       children: [
@@ -231,26 +268,32 @@ class _MealPlanScreenState extends State<MealPlanScreen>
               ? const Center(
                   child: CircularProgressIndicator(color: Colors.green),
                 )
-              : planProvider.meals.isEmpty
+              : sortedMealEntries
+                    .isEmpty // 🚀 Usamos la lista ordenada aquí
               ? _buildEmptyState()
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: planProvider.meals.entries.map((entry) {
-                      final widgetList = MealCategoryList(
-                        categoryName: entry.key,
-                        meals: entry.value,
-                        isCalorieLimitReached: isCalorieLimitReached,
-                        onReplace: (meal) => _handleReplace(entry.key, meal),
-                        onToggleCompleted: (meal) =>
-                            _handleToggleCompleted(entry.key, meal),
-                        animations: _animations,
-                        startingAnimationIndex: currentAnimationIndex,
-                      );
-                      currentAnimationIndex += entry.value.length;
-                      return widgetList;
-                    }).toList(),
+                  // 🔥 Cuidado con el padding bottom para que no te pase el problema del último elemento cortado
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 80),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      // 🚀 Usamos la lista ORDENADA en lugar del mapa crudo
+                      children: sortedMealEntries.map((entry) {
+                        final widgetList = MealCategoryList(
+                          categoryName: entry.key,
+                          meals: entry.value,
+                          isCalorieLimitReached: isCalorieLimitReached,
+                          onReplace: (meal) => _handleReplace(entry.key, meal),
+                          onToggleCompleted: (meal) =>
+                              _handleToggleCompleted(entry.key, meal),
+                          animations: _animations,
+                          startingAnimationIndex: currentAnimationIndex,
+                        );
+                        currentAnimationIndex += entry.value.length;
+                        return widgetList;
+                      }).toList(),
+                    ),
                   ),
                 ),
         ),

@@ -51,7 +51,17 @@ class DashboardService {
     final responseString = await response.stream.bytesToString();
 
     if (response.statusCode == 200) {
-      return jsonDecode(responseString);
+      final data = jsonDecode(responseString);
+
+      // 🌟 FILTRO DE CORDURA VISUAL
+      final calorias = data['calorias'] ?? 0;
+      if (calorias == 0) {
+        throw Exception(
+          "No pude reconocer la comida en la foto. Intenta tomarla desde otro ángulo.",
+        );
+      }
+
+      return data;
     } else {
       try {
         final errorData = jsonDecode(responseString);
@@ -69,27 +79,39 @@ class DashboardService {
     Map<String, dynamic> originalData, {
     List<Map<String, String>>? resolucionPendientes,
   }) async {
+    // 1. Clonamos el objeto para no modificar el original de la UI
     final Map<String, dynamic> data = jsonDecode(jsonEncode(originalData));
 
-    // 🩹 Mapeo defensivo de macros
+    // 2. Formateo de Macros: Garantizamos que Python reciba los nombres estándar
+    // Si por algún casual la IA mandara "proteinas_g", lo renombramos a "proteinas" para tu backend.
     if (data['macros'] != null) {
       final macros = data['macros'];
-      macros['proteinas_g'] = macros['proteinas'] ?? macros['proteinas_g'] ?? 0;
-      macros['carbohidratos_g'] =
+      final num proteinas = macros['proteinas'] ?? macros['proteinas_g'] ?? 0;
+      final num carbohidratos =
           macros['carbohidratos'] ?? macros['carbohidratos_g'] ?? 0;
-      macros['grasas_g'] = macros['grasas'] ?? macros['grasas_g'] ?? 0;
-      data['macros'] = macros;
+      final num grasas = macros['grasas'] ?? macros['grasas_g'] ?? 0;
+
+      // Sobrescribimos el objeto macros enviando SOLO las claves limpias que espera Python
+      data['macros'] = {
+        'proteinas': proteinas,
+        'carbohidratos': carbohidratos,
+        'grasas': grasas,
+      };
     }
 
-    // 🚀 Inyectamos el array de resoluciones si existe
+    // 3. Inyectamos el array de resoluciones si el usuario seleccionó un turno (Desayuno, Comida, etc)
     if (resolucionPendientes != null && resolucionPendientes.isNotEmpty) {
       data['resolucion_pendientes'] = resolucionPendientes;
     }
 
+    // 4. Hacemos la llamada al servidor
     final response = await ApiClient.post('/ai/intakes', body: data);
 
+    // Si Python no devuelve 200 (OK) o 201 (Created), lanzamos error para que la UI lo pinte de rojo
     if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception("Error del servidor al guardar la ingesta");
+      throw Exception(
+        "Error ${response.statusCode} del servidor al guardar la ingesta. Respuesta: ${response.body}",
+      );
     }
   }
 
@@ -100,10 +122,22 @@ class DashboardService {
       body: {'texto': texto},
     );
 
-    // Asumimos que ApiClient maneja el jsonEncode internamente,
-    // si no, asegúrate de que el body se envíe como JSON.
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body);
+
+      // 🌟 FILTRO DE CORDURA (Anti-Alucinaciones)
+      final calorias = data['calorias'] ?? 0;
+      final proteinas =
+          data['macros']?['proteinas'] ?? data['macros']?['proteinas_g'] ?? 0;
+
+      // Si la IA nos devuelve 0 calorías o no encuentra proteínas, es un fallo de cálculo.
+      if (calorias == 0 && proteinas == 0) {
+        throw Exception(
+          "No he podido calcular los valores. Prueba a especificar cantidades (ej: '1 huevo duro grande').",
+        );
+      }
+
+      return data;
     } else {
       try {
         final errorData = jsonDecode(response.body);

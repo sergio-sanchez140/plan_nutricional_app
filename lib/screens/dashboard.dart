@@ -93,10 +93,20 @@ class DashboardState extends State<Dashboard>
         data["objetivo"] == null;
   }
 
+  // 🌟 HELPER: Orden cronológico estricto de las comidas
+  int _getOrdenTurno(String turno) {
+    final t = turno.toLowerCase();
+    if (t.contains('desayuno')) return 1;
+    if (t.contains('media mañana') || t.contains('almuerzo')) return 2;
+    if (t.contains('comida')) return 3;
+    if (t.contains('merienda')) return 4;
+    if (t.contains('cena')) return 5;
+    return 6; // Snacks o recenas van al final
+  }
+
   // =========================================================================
   // 🧩 MÉTODOS UI Y ACCIONES
   // =========================================================================
-
   Future<void> _handleAddMenuAction() async {
     final result = await AddMenuBottomSheet.show(context);
     if (!mounted || result == null) return;
@@ -104,40 +114,8 @@ class DashboardState extends State<Dashboard>
     if (result == 'scanner') {
       await AiMealFlow.startCameraFlow(context);
     } else if (result == 'manual') {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (context) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: FreeIntakeSheet(
-            onSuccess: (iaData) async {
-              if (!mounted) return;
-              final turnosPendientes = context
-                  .read<ProgressProvider>()
-                  .turnosPendientes;
-
-              final modalResult = await AiResultBottomSheet.show(
-                context: context,
-                data: iaData,
-                intentosRestantes: 0,
-                turnosPendientes: turnosPendientes,
-              );
-
-              if (modalResult != null && modalResult['action'] == 'confirm') {
-                if (!mounted) return;
-                await AiMealFlow.guardarPlatoAnalizado(
-                  context,
-                  iaData,
-                  modalResult['resoluciones'],
-                );
-              }
-            },
-          ),
-        ),
-      );
+      // 🌟 REFACTOR: Delegamos toda la lógica al gestor de flujos de IA
+      await AiMealFlow.startManualFlow(context);
     }
   }
 
@@ -169,10 +147,15 @@ class DashboardState extends State<Dashboard>
     final double caloriasMeta = progressProvider.caloriasObjetivoHoy;
     final bool isCalorieLimitReached =
         caloriasMeta > 0 && progressProvider.caloriasConsumidas >= caloriasMeta;
+    // 🌟 1. Extraemos y ORDENAMOS los turnos pendientes cronológicamente
     final List<String> turnosPendientes = List<String>.from(
       progressProvider.turnosPendientes,
-    );
+    )..sort((a, b) => _getOrdenTurno(a).compareTo(_getOrdenTurno(b)));
 
+    // 🌟 2. Extraemos y ORDENAMOS el historial completado cronológicamente
+    final List<String> historialOrdenado = List<String>.from(
+      progressProvider.historialConsumo,
+    )..sort((a, b) => _getOrdenTurno(a).compareTo(_getOrdenTurno(b)));
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -227,10 +210,9 @@ class DashboardState extends State<Dashboard>
               if (progressProvider.historialConsumo.isNotEmpty ||
                   turnosPendientes.isNotEmpty) ...[
                 MealsHistoryCard(
-                  historial: List<String>.from(
-                    progressProvider.historialConsumo,
-                  ),
-                  turnosPendientes: turnosPendientes,
+                  historial: historialOrdenado, // 🚀 Usamos la lista ordenada
+                  turnosPendientes:
+                      turnosPendientes, // 🚀 Ya viene ordenada arriba
                   isCalorieLimitReached: isCalorieLimitReached,
                   onAddAction: _handleAddMenuAction,
                 ),

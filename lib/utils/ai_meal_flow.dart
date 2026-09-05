@@ -11,7 +11,7 @@ import '../providers/progress_provider.dart';
 import '../widgets/modals/photo_confirmation_dialog.dart';
 import '../widgets/modals/loading_ai_dialog.dart';
 import '../widgets/modals/ai_result_bottom_sheet.dart';
-import '../widgets/modals/recalculating_dialog.dart';
+import '../widgets/free_intake_sheet.dart';
 
 class AiMealFlow {
   // 1. INICIA EL FLUJO DE LA CÁMARA
@@ -39,13 +39,67 @@ class AiMealFlow {
     }
   }
 
+  // ========================================================================
+  // INICIA EL FLUJO MANUAL (TEXTO)
+  // ========================================================================
+  static Future<void> startManualFlow(BuildContext mainContext) async {
+    // 🌟 FÍJATE AQUÍ: Renombramos la variable de entrada a 'mainContext'
+
+    showModalBottomSheet(
+      context: mainContext,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      // 🌟 FÍJATE AQUÍ: Al contexto del modal le llamamos 'sheetContext'
+      // para no mezclarlo con el mainContext que sobrevive
+      builder: (sheetContext) => FreeIntakeSheet(
+        onSuccess: (data) async {
+          // 🛡️ Verificamos que el Dashboard siga vivo
+          if (!mainContext.mounted) return;
+
+          // 🌟 USAMOS EL MAIN CONTEXT PARA TODO A PARTIR DE AHORA
+          final turnosPendientes = mainContext
+              .read<ProgressProvider>()
+              .turnosPendientes;
+
+          final result = await AiResultBottomSheet.show(
+            context: mainContext, // Usamos mainContext
+            data: data,
+            intentosRestantes: 0,
+            turnosPendientes: turnosPendientes,
+          );
+
+          if (result != null && result['action'] == 'confirm') {
+            if (!mainContext.mounted) return;
+            // 🌟 USAMOS EL MAIN CONTEXT PARA GUARDAR Y MOSTRAR EL LOADING FINAL
+            await guardarPlatoAnalizado(
+              mainContext,
+              data,
+              result['resoluciones'],
+            );
+          }
+        },
+      ),
+    );
+  }
+
   // 2. ENVÍA LA FOTO Y MUESTRA RESULTADOS
   static Future<void> _sendPhotoToBackend(
     BuildContext context,
     XFile image,
     int intentos,
   ) async {
-    LoadingAiDialog.show(context);
+    // 🌟 LLAMADA AL NUEVO LOADING (Textos de escáner)
+    LoadingAiDialog.show(
+      context,
+      title: "Analizando tu plato",
+      texts: [
+        "Identificando ingredientes...",
+        "Estimando tamaños de porción...",
+        "Calculando calorías y macros...",
+        "¡Ya casi lo tenemos!",
+      ],
+    );
+
     try {
       final data = await DashboardService.analyzeVision(image);
       if (!context.mounted) return;
@@ -82,21 +136,54 @@ class AiMealFlow {
     }
   }
 
-  // 3. GUARDA EL PLATO (Público para que pueda ser llamado también desde el modo Manual)
+  // 3. GUARDA EL PLATO (Versión Blindada)
   static Future<void> guardarPlatoAnalizado(
     BuildContext context,
     Map<String, dynamic> data,
     dynamic resolucionesMap,
   ) async {
-    RecalculatingDialog.show(context);
+    LoadingAiDialog.show(
+      context,
+      title: "Registrando comida",
+      texts: [
+        "Guardando los datos nutricionales...",
+        "Actualizando tu historial de hoy...",
+        "Recalculando tu tanque de energía...",
+        "Ajustando el resto de tu plan...",
+      ],
+    );
 
     try {
       List<Map<String, String>> listaResoluciones = [];
+
+      // 🌟 EL TANQUE BLINDADO: Inspeccionamos la variable sin dar nada por hecho
       if (resolucionesMap != null) {
-        final map = resolucionesMap as Map<String, String>;
-        listaResoluciones = map.entries
-            .map((e) => {"turno": e.key, "estado": e.value})
-            .toList();
+        // 1. Si es un Mapa (Viene de la cámara generalmente)
+        if (resolucionesMap is Map) {
+          resolucionesMap.forEach((key, value) {
+            listaResoluciones.add({
+              "turno": key.toString(),
+              "estado": value.toString(),
+            });
+          });
+        }
+        // 2. Si es una Lista de objetos (Viene del modo manual generalmente)
+        else if (resolucionesMap is Iterable) {
+          for (var item in resolucionesMap) {
+            if (item is Map) {
+              listaResoluciones.add({
+                "turno": item["turno"]?.toString() ?? "",
+                "estado": item["estado"]?.toString() ?? "",
+              });
+            } else if (item is String) {
+              // ⚠️ ESTE ERA EL PROBLEMA: Si el modal solo devuelve una lista de strings (ej: ["desayuno", "merienda"])
+              listaResoluciones.add({
+                "turno": item,
+                "estado": "completado", // Asumimos completado por defecto
+              });
+            }
+          }
+        }
       }
 
       await DashboardService.saveIntake(
@@ -109,7 +196,6 @@ class AiMealFlow {
       await context.read<ProgressProvider>().fetchProgress(silent: true);
       context.read<ProgressProvider>().setPlanNeedsRefresh(true);
 
-      // Cancelación de notificaciones
       for (var resolucion in listaResoluciones) {
         if (resolucion['estado'] == 'completado' ||
             resolucion['estado'] == 'sustituido') {
@@ -121,12 +207,15 @@ class AiMealFlow {
       }
 
       if (context.mounted) {
-        RecalculatingDialog.hide(context);
-        _showMessage(context, '¡Plan recalculado con éxito! 🚀');
+        LoadingAiDialog.hide(context);
+        // Mensaje limpio, sin emojis para proteger Flutter Web
+        _showMessage(context, '¡Plan recalculado con éxito!');
       }
     } catch (e) {
       if (context.mounted) {
-        RecalculatingDialog.hide(context);
+        LoadingAiDialog.hide(context);
+        // Añadimos imprimir el error real en consola para depurar si vuelve a fallar
+        print("❌ Error en guardarPlatoAnalizado: $e");
         _showMessage(context, 'No se pudo guardar la comida', isError: true);
       }
     }

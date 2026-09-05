@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:plan_nutricional_app/widgets/modals/loading_ai_dialog.dart';
 import '../services/dashboard_service.dart'; // 🚀 Importamos nuestro servicio unificado
 
 class FreeIntakeSheet extends StatefulWidget {
@@ -11,31 +12,44 @@ class FreeIntakeSheet extends StatefulWidget {
 
 class FreeIntakeSheetState extends State<FreeIntakeSheet> {
   final TextEditingController _textCtrl = TextEditingController();
-  bool _isProcessing = false;
+  final bool _isProcessing = false;
   String _errorMsg = '';
 
   Future<void> _submitIntake() async {
     final text = _textCtrl.text.trim();
     if (text.isEmpty) return;
 
-    setState(() {
-      _isProcessing = true;
-      _errorMsg = '';
-    });
+    // Quitamos el _isProcessing = true, ya no nos hace falta porque el popup bloquea la pantalla
+    setState(() => _errorMsg = '');
+
+    // 🌟 1. Levantamos el modal Premium adaptado a lectura de texto
+    LoadingAiDialog.show(
+      context,
+      title: "Analizando tu comida",
+      texts: [
+        "Leyendo ingredientes...",
+        "Buscando equivalencias nutricionales...",
+        "Calculando calorías y porciones...",
+        "¡Preparando el resumen!",
+      ],
+    );
 
     try {
-      // 🚀 ¡Llamamos al NUEVO endpoint que solo analiza, NO guarda!
       final data = await DashboardService.analyzeText(text);
-      
+
       if (mounted) {
-        Navigator.pop(context); // 1. Cerramos el teclado y este modal
-        widget.onSuccess(data); // 2. Mandamos la data al Dashboard para que abra el modal de Catch-up
+        // 🌟 2. Cerramos el popup premium
+        LoadingAiDialog.hide(context);
+
+        Navigator.pop(context); // Cerramos este modal de escritura
+        widget.onSuccess(data); // Mandamos la data al flujo
       }
     } catch (e) {
-      // Limpiamos el mensaje de error por si viene con la palabra "Exception:"
-      setState(() => _errorMsg = e.toString().replaceAll('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        // 🌟 3. Cerramos el popup premium si hay error
+        LoadingAiDialog.hide(context);
+        setState(() => _errorMsg = e.toString().replaceAll('Exception: ', ''));
+      }
     }
   }
 
@@ -96,7 +110,8 @@ class FreeIntakeSheetState extends State<FreeIntakeSheet> {
                 minLines: 2,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  hintText: "Ej: Dos porciones de pizza barbacoa y una cola zero...",
+                  hintText:
+                      "Ej: Dos porciones de pizza barbacoa y una cola zero...",
                   filled: true,
                   fillColor: Colors.grey.shade50,
                   border: OutlineInputBorder(

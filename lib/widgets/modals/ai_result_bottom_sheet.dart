@@ -42,7 +42,8 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
   Widget build(BuildContext context) {
     final macros = widget.data['macros'] ?? {};
     final ingredientes = List<String>.from(widget.data['ingredientes'] ?? []);
-    final bool todosResueltos = _estadoPendientes.length == widget.turnosPendientes.length;
+    final bool todosResueltos =
+        _estadoPendientes.length == widget.turnosPendientes.length;
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -56,50 +57,82 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
         children: [
           Center(
             child: Container(
-              width: 50, height: 5,
-              decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
+              width: 50,
+              height: 5,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
           const SizedBox(height: 20),
-          
+
           Text(
             widget.data['nombre_plato'] ?? 'Desconocido',
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-          
+
           Text(
             "🔥 ${widget.data['calorias'] ?? 0} kcal",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.orange.shade700),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.orange.shade700,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-          
+
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              MacroChip(label: "Proteínas", value: "${macros['proteinas'] ?? macros['proteinas_g'] ?? 0}g", color: Colors.red),
-              MacroChip(label: "Carbos", value: "${macros['carbohidratos'] ?? macros['carbohidratos_g'] ?? 0}g", color: Colors.blue),
-              MacroChip(label: "Grasas", value: "${macros['grasas'] ?? macros['grasas_g'] ?? 0}g", color: Colors.amber),
+              MacroChip(
+                label: "Proteínas",
+                value: "${macros['proteinas'] ?? macros['proteinas_g'] ?? 0}g",
+                color: Colors.red,
+              ),
+              MacroChip(
+                label: "Carbos",
+                value:
+                    "${macros['carbohidratos'] ?? macros['carbohidratos_g'] ?? 0}g",
+                color: Colors.blue,
+              ),
+              MacroChip(
+                label: "Grasas",
+                value: "${macros['grasas'] ?? macros['grasas_g'] ?? 0}g",
+                color: Colors.amber,
+              ),
             ],
           ),
           const SizedBox(height: 24),
 
           // 🚀 UX FIX: Restauramos la lista de ingredientes si la IA los detectó
           if (ingredientes.isNotEmpty) ...[
-            const Text("Ingredientes detectados:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const Text(
+              "Ingredientes detectados:",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
             const SizedBox(height: 8),
-            ...ingredientes.map((ing) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.green, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(ing, style: const TextStyle(fontSize: 13))),
-                ],
+            ...ingredientes.map(
+              (ing) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(ing, style: const TextStyle(fontSize: 13)),
+                    ),
+                  ],
+                ),
               ),
-            )),
+            ),
             const SizedBox(height: 20),
           ],
 
@@ -112,7 +145,7 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
                 ? () {
                     Navigator.pop(context, {
                       'action': 'confirm',
-                      'resoluciones': _estadoPendientes, 
+                      'resoluciones': _estadoPendientes,
                     });
                   }
                 : null,
@@ -120,11 +153,17 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
               backgroundColor: Colors.green,
               disabledBackgroundColor: Colors.grey.shade300,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
             child: Text(
               "¡Me lo he comido!",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: todosResueltos ? Colors.white : Colors.grey),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: todosResueltos ? Colors.white : Colors.grey,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -135,7 +174,11 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
               onPressed: () => Navigator.pop(context, {'action': 'retry'}),
               child: Text(
                 "Volver a escanear (${widget.intentosRestantes} restantes)",
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 15, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           const SizedBox(height: 16),
@@ -163,10 +206,17 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
           children: [
             const Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange,
+                  size: 20,
+                ),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text("Ajuste de plan diario", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  child: Text(
+                    "Ajuste de plan diario",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
                 ),
               ],
             ),
@@ -176,7 +226,9 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
               style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
             ),
             const SizedBox(height: 12),
-            ...widget.turnosPendientes.map((turno) => _buildPendingMealRow(turno)),
+            ...widget.turnosPendientes.map(
+              (turno) => _buildPendingMealRow(turno),
+            ),
           ],
         ),
       ),
@@ -184,14 +236,14 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
   }
 
   Widget _buildPendingMealRow(dynamic turnoInfo) {
-    final String idTurno = turnoInfo['turno'] ?? '';
-    final String rawNombre = turnoInfo['nombre'] ?? idTurno;
-    
-    // 🛡️ Protección anti-crashes por si el backend manda un string vacío
-    final String nombre = rawNombre.isNotEmpty 
-        ? "${rawNombre[0].toUpperCase()}${rawNombre.substring(1)}" 
+    // 🌟 CORRECCIÓN: turnoInfo es un String plano (ej: "desayuno")
+    final String idTurno = turnoInfo.toString();
+
+    // Capitalizamos la primera letra para que quede bonito (ej: "Desayuno")
+    final String nombre = idTurno.isNotEmpty
+        ? "${idTurno[0].toUpperCase()}${idTurno.substring(1)}"
         : "Turno pendiente";
-        
+
     final String? estadoActual = _estadoPendientes[idTurno];
 
     return Padding(
@@ -199,15 +251,19 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
       child: Row(
         children: [
           Expanded(
-            child: Text("• $nombre", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            child: Text(
+              "• $nombre",
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
           ),
-          
+
           // 🚀 Usamos el nuevo componente reutilizable
           _buildActionBtn(
             isSelected: estadoActual == 'completado',
             icon: Icons.check,
             activeColor: Colors.green,
-            onTap: () => setState(() => _estadoPendientes[idTurno] = 'completado'),
+            onTap: () =>
+                setState(() => _estadoPendientes[idTurno] = 'completado'),
           ),
           const SizedBox(width: 8),
           _buildActionBtn(
@@ -235,9 +291,15 @@ class _AiResultBottomSheetState extends State<AiResultBottomSheet> {
         decoration: BoxDecoration(
           color: isSelected ? activeColor : Colors.white,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: isSelected ? activeColor : Colors.grey.shade300),
+          border: Border.all(
+            color: isSelected ? activeColor : Colors.grey.shade300,
+          ),
         ),
-        child: Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.grey),
+        child: Icon(
+          icon,
+          size: 16,
+          color: isSelected ? Colors.white : Colors.grey,
+        ),
       ),
     );
   }
